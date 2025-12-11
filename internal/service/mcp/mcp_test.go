@@ -38,7 +38,7 @@ func TestNewMCPService(t *testing.T) {
 			}
 
 			conf := &ServiceConfig{
-				Db:                      db,
+				DB:                      db,
 				McpProxyServer:          tt.mcpProxyServer,
 				SseMcpProxyServer:       tt.mcpProxyServer,
 				Metrics:                 telemetry.NewNoopCustomMetrics(),
@@ -75,7 +75,7 @@ func TestMCPServiceInitialization(t *testing.T) {
 	proxyServer := &server.MCPServer{}
 
 	conf := &ServiceConfig{
-		Db:                      setup.DB,
+		DB:                      setup.DB,
 		McpProxyServer:          proxyServer,
 		SseMcpProxyServer:       proxyServer,
 		Metrics:                 telemetry.NewNoopCustomMetrics(),
@@ -114,7 +114,7 @@ func TestMCPServiceCallbacks(t *testing.T) {
 	proxyServer := &server.MCPServer{}
 
 	conf := &ServiceConfig{
-		Db:                      db,
+		DB:                      db,
 		McpProxyServer:          proxyServer,
 		SseMcpProxyServer:       proxyServer,
 		Metrics:                 telemetry.NewNoopCustomMetrics(),
@@ -149,7 +149,7 @@ func TestMCPServiceConcurrency(t *testing.T) {
 	proxyServer := &server.MCPServer{}
 
 	conf := &ServiceConfig{
-		Db:                      db,
+		DB:                      db,
 		McpProxyServer:          proxyServer,
 		SseMcpProxyServer:       proxyServer,
 		Metrics:                 telemetry.NewNoopCustomMetrics(),
@@ -192,7 +192,7 @@ func TestMCPServiceToolInstances(t *testing.T) {
 	proxyServer := &server.MCPServer{}
 
 	conf := &ServiceConfig{
-		Db:                      db,
+		DB:                      db,
 		McpProxyServer:          proxyServer,
 		SseMcpProxyServer:       proxyServer,
 		Metrics:                 telemetry.NewNoopCustomMetrics(),
@@ -234,7 +234,7 @@ func TestMCPServiceErrorHandling(t *testing.T) {
 	proxyServer := &server.MCPServer{}
 
 	conf := &ServiceConfig{
-		Db:                      db,
+		DB:                      db,
 		McpProxyServer:          proxyServer,
 		SseMcpProxyServer:       proxyServer,
 		Metrics:                 telemetry.NewNoopCustomMetrics(),

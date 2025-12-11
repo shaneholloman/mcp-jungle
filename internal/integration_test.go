@@ -41,7 +41,7 @@ func TestPromptsIntegration(t *testing.T) {
 
 	// Create MCP service
 	conf := &mcpService.ServiceConfig{
-		Db:                      db,
+		DB:                      db,
 		McpProxyServer:          mcpProxyServer,
 		SseMcpProxyServer:       sseMcpProxyServer,
 		Metrics:                 mcpMetrics,

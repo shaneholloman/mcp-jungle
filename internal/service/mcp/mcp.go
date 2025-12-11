@@ -13,7 +13,7 @@ import (
 
 // ServiceConfig holds the configuration parameters for initializing the MCPService.
 type ServiceConfig struct {
-	Db *gorm.DB
+	DB *gorm.DB
 
 	McpProxyServer    *server.MCPServer
 	SseMcpProxyServer *server.MCPServer
@@ -51,7 +51,7 @@ type MCPService struct {
 // It initializes the MCP proxy server by loading all registered tools from the database.
 func NewMCPService(c *ServiceConfig) (*MCPService, error) {
 	s := &MCPService{
-		db: c.Db,
+		db: c.DB,
 
 		mcpProxyServer:    c.McpProxyServer,
 		sseMcpProxyServer: c.SseMcpProxyServer,

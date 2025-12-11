@@ -360,7 +360,7 @@ func runStartServer(cmd *cobra.Command, args []string) error {
 	log.Printf("[server] timeout for initialization requests to MCP servers is %d seconds\n", timeout)
 
 	mcpServiceConfig := &mcp.ServiceConfig{
-		Db:                      dbConn,
+		DB:                      dbConn,
 		McpProxyServer:          mcpProxyServer,
 		SseMcpProxyServer:       sseMcpProxyServer,
 		Metrics:                 mcpMetrics,
