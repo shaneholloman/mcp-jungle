@@ -30,16 +30,16 @@ func runGetToolUsage(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to get tool '%s': %w", args[0], err)
 	}
 
-	fmt.Println(t.Name)
-	fmt.Println(t.Description)
+	cmd.Println(t.Name)
+	cmd.Println(t.Description)
 
 	if len(t.InputSchema.Properties) == 0 {
-		fmt.Println("This tool does not require any input parameters.")
+		cmd.Println("This tool does not require any input parameters.")
 		return nil
 	}
 
-	fmt.Println()
-	fmt.Println("Input Parameters:")
+	cmd.Println()
+	cmd.Println("Input Parameters:")
 	for k, v := range t.InputSchema.Properties {
 		requiredOrOptional := "optional"
 		if slices.Contains(t.InputSchema.Required, k) {
@@ -48,19 +48,28 @@ func runGetToolUsage(cmd *cobra.Command, args []string) error {
 
 		boundary := strings.Repeat("=", len(k)+len(requiredOrOptional)+20)
 
-		fmt.Println(boundary)
+		cmd.Println(boundary)
 		fmt.Printf("%s (%s)\n", k, requiredOrOptional)
 
 		j, err := json.MarshalIndent(v, "", "  ")
 		if err != nil {
 			// Simply print the raw object if we fail to marshal it
-			fmt.Println(v)
+			cmd.Println(v)
 		} else {
-			fmt.Println(string(j))
+			cmd.Println(string(j))
 		}
-		fmt.Println(boundary)
+		cmd.Println(boundary)
 
-		fmt.Println()
+		cmd.Println()
+	}
+
+	// Print annotations if present
+	if len(t.Annotations) > 0 {
+		cmd.Println()
+		cmd.Println("Annotations:")
+		for k, v := range t.Annotations {
+			cmd.Printf("* %s = %v\n", k, v)
+		}
 	}
 
 	return nil

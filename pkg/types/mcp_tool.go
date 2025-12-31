@@ -13,6 +13,7 @@ type Tool struct {
 	Enabled     bool            `json:"enabled"`
 	Description string          `json:"description"`
 	InputSchema ToolInputSchema `json:"input_schema"`
+	Annotations map[string]any  `json:"annotations,omitempty"`
 }
 
 // ToolInvokeResult represents the result of a Tool call.
