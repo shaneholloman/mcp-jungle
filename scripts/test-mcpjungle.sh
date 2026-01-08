@@ -74,8 +74,14 @@ cleanup_compose() {
   fi
 }
 
+cleanup_artifacts() {
+  rm -f ./mcpjungle.db ./mcp.db
+}
+
 # Always cleanup on exit
-trap 'cleanup_binary_server; cleanup_compose' EXIT
+trap 'cleanup_binary_server; cleanup_compose; cleanup_artifacts' EXIT
+
+export MCP_SERVER_INIT_REQ_TIMEOUT_SEC=30
 
 # 0) Requirements
 log "Checking required commands"
@@ -167,7 +173,6 @@ popd >/dev/null
 log "All tests passed 🎉"
 
 log "Cleaning up"
-
-rm -f ./mcpjungle.db ./mcp.db
+unset MCP_SERVER_INIT_REQ_TIMEOUT_SEC
 
 log "All done!"
