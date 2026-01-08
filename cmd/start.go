@@ -66,7 +66,10 @@ var startServerCmd = &cobra.Command{
 		"You can also supply a custom DSN in the DATABASE_URL environment variable.\n" +
 		"eg: export DATABASE_URL='postgres://user:password@localhost:5432/mcpjungle'\n" +
 		"For Postgres, you can also set individual connection details using the following environment variables:\n" +
-		"POSTGRES_HOST, POSTGRES_PORT (default 5432), POSTGRES_USER (default postgres), POSTGRES_PASSWORD, POSTGRES_DB (default postgres)\n",
+		"POSTGRES_HOST, POSTGRES_PORT (default 5432), POSTGRES_USER (default postgres), POSTGRES_PASSWORD, POSTGRES_DB (default postgres)\n\n" +
+		"You can also configure the amount of time (in seconds) mcpjungle will wait for a new MCP server's initialization before aborting it.\n" +
+		"Set the MCP_SERVER_INIT_REQ_TIMEOUT_SEC environment variable to an integer (default is 10).\n" +
+		"This is useful when you register a MCP server (usually stdio, like filesystem) that may take some time to start up.\n",
 	RunE: runStartServer,
 	Annotations: map[string]string{
 		"group": string(subCommandGroupBasic),
