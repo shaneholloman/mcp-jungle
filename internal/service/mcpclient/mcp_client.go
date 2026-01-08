@@ -31,11 +31,20 @@ func (m *McpClientService) ListClients() ([]*model.McpClient, error) {
 // CreateClient creates a new MCP client in the database.
 // It also generates a new access token for the client.
 func (m *McpClientService) CreateClient(client model.McpClient) (*model.McpClient, error) {
-	token, err := internal.GenerateAccessToken()
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate access token: %w", err)
+	if client.AccessToken != "" {
+		// user has supplied a custom access token, validate it
+		if err := internal.ValidateAccessToken(client.AccessToken); err != nil {
+			return nil, fmt.Errorf("invalid access token: %w", err)
+		}
+		// todo: add audit log entry for custom token usage
+	} else {
+		// no access token is provided by user, generate a new one
+		token, err := internal.GenerateAccessToken()
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate access token: %w", err)
+		}
+		client.AccessToken = token
 	}
-	client.AccessToken = token
 
 	// Initialize AllowList with empty array if not provided
 	if client.AllowList == nil {
@@ -66,4 +75,28 @@ func (m *McpClientService) GetClientByToken(token string) (*model.McpClient, err
 func (m *McpClientService) DeleteClient(name string) error {
 	result := m.db.Unscoped().Where("name = ?", name).Delete(&model.McpClient{})
 	return result.Error
+}
+
+// UpdateClient updates an existing MCP client's information in the database.
+// Currently, it only supports updating the access token of the client.
+func (m *McpClientService) UpdateClient(updatedClient model.McpClient) (*model.McpClient, error) {
+	var client model.McpClient
+	if err := m.db.Where("name = ?", updatedClient.Name).First(&client).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, errors.New("client not found")
+		}
+		return nil, err
+	}
+
+	if err := internal.ValidateAccessToken(updatedClient.AccessToken); err != nil {
+		return nil, fmt.Errorf("invalid access token: %w", err)
+	}
+
+	// Update only the access token for now
+	client.AccessToken = updatedClient.AccessToken
+
+	if err := m.db.Save(&client).Error; err != nil {
+		return nil, err
+	}
+	return &client, nil
 }
