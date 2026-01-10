@@ -689,6 +689,10 @@ Send this token in the `Authorization: Bearer {token}` HTTP header.
 Mcpjungle creates an access token for your client.
 Configure your client or agent to send this token in the `Authorization` header when making requests to the mcpjungle proxy.
 
+> [!TIP]
+> You can also supply a custom access token for your mcp clients and user accounts using the `--access-token` flag.
+> This is useful when you want to manage tokens yourself, perhaps through a central identity server.
+
 For example, you can add the following configuration in Cursor to connect to MCPJungle:
 
 ```json
