@@ -295,6 +295,7 @@ func (s *ToolGroupService) newMCPServer(groupName string) *server.MCPServer {
 		"0.1.0",
 		server.WithToolCapabilities(true),
 		server.WithPromptCapabilities(true),
+		server.WithToolFilter(mcp.ProxyToolFilter),
 	)
 }
 
@@ -305,6 +306,7 @@ func (s *ToolGroupService) newSseMCPServer(groupName string) *server.MCPServer {
 		"0.1.0",
 		server.WithToolCapabilities(true),
 		server.WithPromptCapabilities(true),
+		server.WithToolFilter(mcp.ProxyToolFilter),
 	)
 }
 
