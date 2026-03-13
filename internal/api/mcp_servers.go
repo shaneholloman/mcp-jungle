@@ -1,16 +1,26 @@
 package api
 
 import (
+	"errors"
 	"fmt"
+	"log"
 	"net/http"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/mcpjungle/mcpjungle/internal/model"
 	"github.com/mcpjungle/mcpjungle/pkg/types"
+	"gorm.io/gorm"
 )
 
 func (s *Server) registerServerHandler() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		force, err := parseForceQueryParam(c)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
 		var input types.RegisterServerInput
 		if err := c.ShouldBindJSON(&input); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -82,6 +92,26 @@ func (s *Server) registerServerHandler() gin.HandlerFunc {
 			}
 		}
 
+		if force {
+			// If "force" option is set, we check if a server with the same name already exists. If it does, we deregister it before registering the new one.
+			if _, err := s.mcpService.GetMcpServer(input.Name); err == nil {
+				log.Printf("[INFO] force=true: deregistering existing MCP server %s before re-registration", input.Name)
+				if err := s.mcpService.DeregisterMcpServer(input.Name); err != nil {
+					c.JSON(
+						http.StatusInternalServerError,
+						gin.H{"error": fmt.Sprintf("Error deregistering existing server with name %s: %v", input.Name, err)},
+					)
+					return
+				}
+			} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+				c.JSON(
+					http.StatusInternalServerError,
+					gin.H{"error": fmt.Sprintf("Error checking for existing server with name %s: %v", input.Name, err)},
+				)
+				return
+			}
+		}
+
 		if err := s.mcpService.RegisterMcpServer(c, server); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
@@ -89,6 +119,19 @@ func (s *Server) registerServerHandler() gin.HandlerFunc {
 
 		c.JSON(http.StatusCreated, server)
 	}
+}
+
+func parseForceQueryParam(c *gin.Context) (bool, error) {
+	if c.Query("force") == "" {
+		return false, nil
+	}
+
+	force, err := strconv.ParseBool(c.Query("force"))
+	if err != nil {
+		return false, fmt.Errorf("invalid force query parameter: %w", err)
+	}
+
+	return force, nil
 }
 
 func (s *Server) deregisterServerHandler() gin.HandlerFunc {
