@@ -47,7 +47,7 @@ func init() {
 		&getPromptArgs,
 		"arg",
 		nil,
-		"Arguments to pass to the prompt (this flag can be specified multiple times)",
+		"Arguments to pass to the prompt in the form of 'key=value' (this flag can be specified multiple times)",
 	)
 
 	getCmd.AddCommand(getGroupCmd)

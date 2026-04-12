@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 
+# This script tests that the MCP Jungle server returns appropriate error responses for invalid API requests.
+# It starts an isolated server instance, initializes it, and then makes various API calls.
+# It assumes that the mcpjungle binary is already built and available at the specified path.
+
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -168,6 +172,8 @@ if [[ -z "$ADMIN_TOKEN" ]]; then
   echo "Body: ${init_body}" >&2
   exit 1
 fi
+
+# Test cases for API responses
 
 assert_status \
   "register server rejects invalid server name" \
