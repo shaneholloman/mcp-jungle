@@ -3,6 +3,7 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"time"
@@ -11,7 +12,9 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mcpjungle/mcpjungle/internal/model"
 	"github.com/mcpjungle/mcpjungle/internal/telemetry"
+	"github.com/mcpjungle/mcpjungle/pkg/apierrors"
 	"github.com/mcpjungle/mcpjungle/pkg/types"
+	"gorm.io/gorm"
 )
 
 // ToolDeletionCallback is a function type that can be registered to be called
@@ -71,7 +74,7 @@ func (m *MCPService) ListToolsByServer(name string) ([]model.Tool, error) {
 func (m *MCPService) GetTool(name string) (*model.Tool, error) {
 	serverName, toolName, ok := splitServerToolName(name)
 	if !ok {
-		return nil, fmt.Errorf("invalid input: tool name does not contain a %s separator", serverToolNameSep)
+		return nil, fmt.Errorf("tool name does not contain a %s separator: %w", serverToolNameSep, apierrors.ErrInvalidInput)
 	}
 
 	s, err := m.GetMcpServer(serverName)
@@ -81,6 +84,9 @@ func (m *MCPService) GetTool(name string) (*model.Tool, error) {
 
 	var tool model.Tool
 	if err := m.db.Where("server_id = ? AND name = ?", s.ID, toolName).First(&tool).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, fmt.Errorf("tool %s not found: %w", name, apierrors.ErrNotFound)
+		}
 		return nil, fmt.Errorf("failed to get tool %s from DB: %w", name, err)
 	}
 	// set the tool name back to its canonical form
@@ -102,7 +108,7 @@ func (m *MCPService) GetToolInstance(name string) (mcp.Tool, bool) {
 func (m *MCPService) GetToolParentServer(name string) (*model.McpServer, error) {
 	serverName, _, ok := splitServerToolName(name)
 	if !ok {
-		return nil, fmt.Errorf("invalid input: tool name does not contain a %s separator", serverToolNameSep)
+		return nil, fmt.Errorf("tool name does not contain a %s separator: %w", serverToolNameSep, apierrors.ErrInvalidInput)
 	}
 	return m.GetMcpServer(serverName)
 }
@@ -114,7 +120,7 @@ func (m *MCPService) InvokeTool(ctx context.Context, name string, args map[strin
 
 	serverName, toolName, ok := splitServerToolName(name)
 	if !ok {
-		return nil, fmt.Errorf("invalid input: tool name does not contain a %s separator", serverToolNameSep)
+		return nil, fmt.Errorf("tool name does not contain a %s separator: %w", serverToolNameSep, apierrors.ErrInvalidInput)
 	}
 
 	// record the tool call metrics when the function returns
@@ -213,6 +219,9 @@ func (m *MCPService) setToolsEnabled(entity string, enabled bool) ([]string, err
 
 		var tool model.Tool
 		if err := m.db.Where("server_id = ? AND name = ?", s.ID, toolName).First(&tool).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return nil, fmt.Errorf("tool %s not found: %w", entity, apierrors.ErrNotFound)
+			}
 			return nil, fmt.Errorf("failed to get tool %s: %w", entity, err)
 		}
 

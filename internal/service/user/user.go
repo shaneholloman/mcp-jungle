@@ -7,6 +7,7 @@ import (
 
 	"github.com/mcpjungle/mcpjungle/internal"
 	"github.com/mcpjungle/mcpjungle/internal/model"
+	"github.com/mcpjungle/mcpjungle/pkg/apierrors"
 	"github.com/mcpjungle/mcpjungle/pkg/types"
 	"gorm.io/gorm"
 )
@@ -43,7 +44,7 @@ func (u *UserService) GetUserByAccessToken(token string) (*model.User, error) {
 	var user model.User
 	if err := u.db.Where("access_token = ?", token).First(&user).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, fmt.Errorf("user not found")
+			return nil, fmt.Errorf("user not found: %w", apierrors.ErrNotFound)
 		}
 		return nil, fmt.Errorf("failed to verify token: %w", err)
 	}
@@ -67,7 +68,7 @@ func (u *UserService) CreateUser(input *model.User) (*model.User, error) {
 	} else {
 		// validate the user-provided custom access token
 		if err := internal.ValidateAccessToken(input.AccessToken); err != nil {
-			return nil, fmt.Errorf("invalid access token: %w", err)
+			return nil, fmt.Errorf("invalid access token: %v: %w", err, apierrors.ErrInvalidInput)
 		}
 		user.AccessToken = input.AccessToken
 	}
@@ -84,17 +85,17 @@ func (u *UserService) UpdateUser(input *model.User) (*model.User, error) {
 	err := u.db.Where("username = ?", input.Username).First(&user).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, fmt.Errorf("user with username %s not found", input.Username)
+			return nil, fmt.Errorf("user with username %s not found: %w", input.Username, apierrors.ErrNotFound)
 		}
 		return nil, fmt.Errorf("failed to find user: %w", err)
 	}
 
 	if input.AccessToken == "" {
-		return nil, fmt.Errorf("access token cannot be empty")
+		return nil, fmt.Errorf("access token cannot be empty: %w", apierrors.ErrInvalidInput)
 	}
 	// validate the user-provided custom access token
 	if err := internal.ValidateAccessToken(input.AccessToken); err != nil {
-		return nil, fmt.Errorf("invalid access token: %w", err)
+		return nil, fmt.Errorf("invalid access token: %v: %w", err, apierrors.ErrInvalidInput)
 	}
 	user.AccessToken = input.AccessToken
 
@@ -121,13 +122,13 @@ func (u *UserService) DeleteUser(username string) error {
 	err := u.db.Where("username = ?", username).First(&user).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return fmt.Errorf("user with username %s not found", username)
+			return fmt.Errorf("user with username %s not found: %w", username, apierrors.ErrNotFound)
 		}
 		return fmt.Errorf("failed to find user: %w", err)
 	}
 
 	if user.Role == types.UserRoleAdmin {
-		return fmt.Errorf("cannot delete an admin user")
+		return fmt.Errorf("cannot delete an admin user: %w", apierrors.ErrInvalidInput)
 	}
 
 	err = u.db.Unscoped().Where("username = ?", username).Delete(&model.User{}).Error
