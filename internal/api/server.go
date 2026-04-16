@@ -230,6 +230,10 @@ func (s *Server) setupRouter() (*gin.Engine, error) {
 		userAPI.POST("/tools/invoke", s.invokeToolHandler())
 		userAPI.GET("/tool", s.getToolHandler())
 
+		userAPI.GET("/resources", s.listResourcesHandler())
+		userAPI.POST("/resources/get", s.getResourceHandler())
+		userAPI.POST("/resources/read", s.readResourceHandler())
+
 		// Prompt endpoints
 		userAPI.GET("/prompts", s.listPromptsHandler())
 		userAPI.GET("/prompt", s.getPromptHandler())

@@ -12,6 +12,20 @@ import (
 	"github.com/mcpjungle/mcpjungle/pkg/types"
 )
 
+func authorizeProxyServerAccess(ctx context.Context, serverName string) error {
+	serverMode := ctx.Value("mode").(model.ServerMode)
+	if !model.IsEnterpriseMode(serverMode) {
+		return nil
+	}
+
+	c := ctx.Value("client").(*model.McpClient)
+	if !c.CheckHasServerAccess(serverName) {
+		return fmt.Errorf("client %s is not authorized to access MCP server %s", c.Name, serverName)
+	}
+
+	return nil
+}
+
 // MCPProxyToolCallHandler handles tool calls for the MCP proxy server
 // by forwarding the request to the appropriate upstream MCP server and
 // relaying the response back.
@@ -25,16 +39,8 @@ func (m *MCPService) MCPProxyToolCallHandler(ctx context.Context, request mcp.Ca
 		return nil, fmt.Errorf("tool name does not contain a %s separator: %w", serverToolNameSep, apierrors.ErrInvalidInput)
 	}
 
-	serverMode := ctx.Value("mode").(model.ServerMode)
-	if model.IsEnterpriseMode(serverMode) {
-		// In enterprise mode, we need to check whether the MCP client is authorized to access the MCP server.
-		// If not, return error Unauthorized.
-		c := ctx.Value("client").(*model.McpClient)
-		if !c.CheckHasServerAccess(serverName) {
-			return nil, fmt.Errorf(
-				"client %s is not authorized to access MCP server %s", c.Name, serverName,
-			)
-		}
+	if err := authorizeProxyServerAccess(ctx, serverName); err != nil {
+		return nil, err
 	}
 
 	// Record the tool call metrics at the end of the function
@@ -74,6 +80,36 @@ func (m *MCPService) MCPProxyToolCallHandler(ctx context.Context, request mcp.Ca
 	return res, err
 }
 
+// mcpProxyResourceHandler handles resource reads for the MCP proxy server
+// by forwarding the request to the appropriate upstream MCP server and
+// relaying the response back.
+func (m *MCPService) mcpProxyResourceHandler(ctx context.Context, request mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+	// get the upstream mcp server and original resource uri for the requested resource uri
+	resource, err := m.GetResource(request.Params.URI)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get resource %s from DB: %w", request.Params.URI, err)
+	}
+
+	if err := authorizeProxyServerAccess(ctx, resource.Server.Name); err != nil {
+		return nil, err
+	}
+
+	session, err := m.getSession(ctx, &resource.Server)
+	if err != nil {
+		return nil, err
+	}
+	defer session.closeIfApplicable()
+
+	request.Params.URI = resource.OriginalURI
+	res, err := session.client.ReadResource(ctx, request)
+	if err != nil {
+		session.invalidateOnError(err)
+		return nil, err
+	}
+
+	return rewriteResourceContentsURI(res.Contents, resource.URI), nil
+}
+
 // mcpProxyPromptHandler handles prompt requests for the MCP proxy server
 // by forwarding the request to the appropriate upstream MCP server and
 // relaying the response back.
@@ -87,16 +123,8 @@ func (m *MCPService) mcpProxyPromptHandler(ctx context.Context, request mcp.GetP
 		return nil, fmt.Errorf("prompt name does not contain a %s separator: %w", serverPromptNameSep, apierrors.ErrInvalidInput)
 	}
 
-	serverMode := ctx.Value("mode").(model.ServerMode)
-	if model.IsEnterpriseMode(serverMode) {
-		// In enterprise mode, we need to check whether the MCP client is authorized to access the MCP server.
-		// If not, return error Unauthorized.
-		c := ctx.Value("client").(*model.McpClient)
-		if !c.CheckHasServerAccess(serverName) {
-			return nil, fmt.Errorf(
-				"client %s is not authorized to access MCP server %s", c.Name, serverName,
-			)
-		}
+	if err := authorizeProxyServerAccess(ctx, serverName); err != nil {
+		return nil, err
 	}
 
 	// Record the prompt call metrics at the end of the function
@@ -137,10 +165,9 @@ func (m *MCPService) mcpProxyPromptHandler(ctx context.Context, request mcp.GetP
 }
 
 // initMCPProxyServer initializes the MCP proxy server.
-// It loads all the registered MCP tools and prompts from the database into the proxy server.
+// It loads all the registered MCP tools, prompts and resources from the database into the proxy server.
 func (m *MCPService) initMCPProxyServer() error {
 	mcpServerModelsCache := make(map[string]*model.McpServer)
-
 	// Load Tools
 	tools, err := m.ListTools()
 	if err != nil {
@@ -223,6 +250,32 @@ func (m *MCPService) initMCPProxyServer() error {
 			m.sseMcpProxyServer.AddPrompt(prompt, m.mcpProxyPromptHandler)
 		} else {
 			m.mcpProxyServer.AddPrompt(prompt, m.mcpProxyPromptHandler)
+		}
+	}
+
+	// Load resources
+	resources, err := m.ListResources()
+	if err != nil {
+		return fmt.Errorf("failed to list resources from DB: %w", err)
+	}
+
+	for _, rm := range resources {
+		if !rm.Enabled {
+			continue
+		}
+
+		// no need to use mcp servers model cache because resources come pre-loaded with server, ie, rm.Server
+
+		resource, err := convertResourceModelToMcpObject(&rm)
+		if err != nil {
+			return fmt.Errorf("failed to convert resource model to MCP object for resource %s: %w", rm.URI, err)
+		}
+		resource.Name = rm.Name
+
+		if rm.Server.Transport == types.TransportSSE {
+			m.sseMcpProxyServer.AddResource(resource, m.mcpProxyResourceHandler)
+		} else {
+			m.mcpProxyServer.AddResource(resource, m.mcpProxyResourceHandler)
 		}
 	}
 

@@ -1,10 +1,14 @@
 package cmd
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
+	"time"
 
+	"github.com/mcpjungle/mcpjungle/pkg/types"
 	"github.com/spf13/cobra"
 )
 
@@ -17,7 +21,10 @@ var getCmd = &cobra.Command{
 	},
 }
 
-var getPromptArgs map[string]string
+var (
+	getPromptArgs      map[string]string
+	getResourceCmdRead bool
+)
 
 var getGroupCmd = &cobra.Command{
 	Use:   "group [name]",
@@ -42,6 +49,15 @@ var getPromptCmd = &cobra.Command{
 	RunE: runGetPrompt,
 }
 
+var getResourceCmd = &cobra.Command{
+	Use:   "resource [uri]",
+	Args:  cobra.ExactArgs(1),
+	Short: "Get resource metadata",
+	Long: "Get resource metadata by URI.\n" +
+		"Use --read to read the resource content instead.",
+	RunE: runGetResource,
+}
+
 func init() {
 	getPromptCmd.Flags().StringToStringVar(
 		&getPromptArgs,
@@ -49,9 +65,16 @@ func init() {
 		nil,
 		"Arguments to pass to the prompt in the form of 'key=value' (this flag can be specified multiple times)",
 	)
+	getResourceCmd.Flags().BoolVar(
+		&getResourceCmdRead,
+		"read",
+		false,
+		"Read the resource content instead of showing metadata",
+	)
 
 	getCmd.AddCommand(getGroupCmd)
 	getCmd.AddCommand(getPromptCmd)
+	getCmd.AddCommand(getResourceCmd)
 	rootCmd.AddCommand(getCmd)
 }
 
@@ -149,6 +172,83 @@ func runGetPrompt(cmd *cobra.Command, args []string) error {
 			cmd.Printf("Content: %+v\n", message.Content)
 		} else {
 			cmd.Printf("Content: %s\n", string(contentBytes))
+		}
+	}
+
+	return nil
+}
+
+func runGetResource(cmd *cobra.Command, args []string) error {
+	resource, err := apiClient.GetResource(args[0])
+	if err != nil {
+		return fmt.Errorf("failed to get resource: %w", err)
+	}
+
+	if getResourceCmdRead {
+		return runGetResourceRead(cmd, resource)
+	}
+
+	cmd.Printf("Resource: %s\n", resource.Name)
+	cmd.Printf("URI: %s\n", resource.URI)
+	if resource.MIMEType != "" {
+		cmd.Printf("MIME Type: %s\n", resource.MIMEType)
+	}
+	if resource.Description != "" {
+		cmd.Printf("Description: %s\n", resource.Description)
+	}
+	if resource.Enabled {
+		cmd.Println("Status: ENABLED")
+	} else {
+		cmd.Println("Status: DISABLED")
+	}
+
+	return nil
+}
+
+func runGetResourceRead(cmd *cobra.Command, resource *types.Resource) error {
+	result, err := apiClient.ReadResource(resource.URI)
+	if err != nil {
+		return fmt.Errorf("failed to read resource: %w", err)
+	}
+
+	cmd.Printf("Resource: %s\n", resource.Name)
+	cmd.Printf("URI: %s\n\n", resource.URI)
+	for i, content := range result.Contents {
+		cmd.Printf("Content %d:\n", i+1)
+
+		if resourceURI, ok := content["uri"].(string); ok && resourceURI != "" {
+			cmd.Printf("URI: %s\n", resourceURI)
+		}
+		if mimeType, ok := content["mimeType"].(string); ok && mimeType != "" {
+			cmd.Printf("MIME Type: %s\n", mimeType)
+		}
+
+		if text, ok := content["text"].(string); ok {
+			if json.Valid([]byte(text)) {
+				var pretty any
+				if err := json.Unmarshal([]byte(text), &pretty); err == nil {
+					prettyBytes, _ := json.MarshalIndent(pretty, "", "  ")
+					cmd.Printf("%s\n", string(prettyBytes))
+				} else {
+					cmd.Println(text)
+				}
+			} else {
+				cmd.Println(text)
+			}
+		} else if blob, ok := content["blob"].(string); ok {
+			data, err := base64.StdEncoding.DecodeString(blob)
+			if err != nil {
+				return fmt.Errorf("failed to decode blob resource content: %w", err)
+			}
+			filename := fmt.Sprintf("resource_%d.bin", time.Now().UnixNano())
+			if err := os.WriteFile(filename, data, 0o644); err != nil {
+				return fmt.Errorf("failed to write blob resource to disk: %w", err)
+			}
+			cmd.Printf("[Blob content saved as %s]\n", filename)
+		}
+
+		if i < len(result.Contents)-1 {
+			cmd.Println()
 		}
 	}
 
