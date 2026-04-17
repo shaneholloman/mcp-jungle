@@ -51,7 +51,7 @@ func TestRegisterServerHandlerValidation(t *testing.T) {
 				Transport:   "streamable_http",
 				URL:         "http://localhost:8080",
 			},
-			expectedStatus: 400, // http.StatusBadRequest
+			expectedStatus: http.StatusBadRequest,
 			expectedError:  "name is required",
 		},
 		{
@@ -61,7 +61,7 @@ func TestRegisterServerHandlerValidation(t *testing.T) {
 				Description: "Test server",
 				URL:         "http://localhost:8080",
 			},
-			expectedStatus: 400, // http.StatusBadRequest
+			expectedStatus: http.StatusBadRequest,
 			expectedError:  "transport is required",
 		},
 		{
@@ -72,7 +72,7 @@ func TestRegisterServerHandlerValidation(t *testing.T) {
 				Transport:   "invalid",
 				URL:         "http://localhost:8080",
 			},
-			expectedStatus: 400, // http.StatusBadRequest
+			expectedStatus: http.StatusBadRequest,
 			expectedError:  "unsupported transport type",
 		},
 		{
@@ -82,7 +82,7 @@ func TestRegisterServerHandlerValidation(t *testing.T) {
 				Description: "Test server",
 				Transport:   "streamable_http",
 			},
-			expectedStatus: 400, // http.StatusBadRequest
+			expectedStatus: http.StatusBadRequest,
 			expectedError:  "url is required for streamable HTTP transport",
 		},
 		{
@@ -92,7 +92,7 @@ func TestRegisterServerHandlerValidation(t *testing.T) {
 				Description: "Test server",
 				Transport:   "stdio",
 			},
-			expectedStatus: 400, // http.StatusBadRequest
+			expectedStatus: http.StatusBadRequest,
 			expectedError:  "command is required for stdio transport",
 		},
 	}
