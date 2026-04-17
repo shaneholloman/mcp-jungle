@@ -11,7 +11,7 @@ func TestListCommandStructure(t *testing.T) {
 
 	// Test command properties
 	testhelpers.AssertEqual(t, "list", listCmd.Use)
-	testhelpers.AssertEqual(t, "List resources like MCP servers, tools, etc", listCmd.Short)
+	testhelpers.AssertEqual(t, "List entities like MCP servers, tools, etc", listCmd.Short)
 
 	// Test command annotations
 	annotationTests := []testhelpers.CommandAnnotationTest{

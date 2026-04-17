@@ -10,7 +10,7 @@ import (
 
 var listCmd = &cobra.Command{
 	Use:   "list",
-	Short: "List resources like MCP servers, tools, etc",
+	Short: "List entities like MCP servers, tools, etc",
 	Annotations: map[string]string{
 		"group": string(subCommandGroupBasic),
 		"order": "3",
