@@ -1,0 +1,115 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "name": "MCPJungle",
+  "theme": "aspen",
+  "colors": {
+    "primary": "#5c64f4",
+    "light": "#acb4fc",
+    "dark": "#ffffff"
+  },
+  "favicon": "https://media.brand.dev/bdf1d847-06bd-4151-b03e-50a3e244afbd.png",
+  "logo": {
+    "light": "https://media.brand.dev/f5cf9483-55db-4419-81cb-331fd5cf7957.svg",
+    "dark": "https://media.brand.dev/f5cf9483-55db-4419-81cb-331fd5cf7957.svg"
+  },
+  "navbar": {
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/mcpjungle/mcpjungle"
+    }
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/mcpjungle/mcpjungle"
+    }
+  },
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "installation"
+            ]
+          },
+          {
+            "group": "Deployment",
+            "pages": [
+              "deployment/docker",
+              "deployment/production",
+              "deployment/database"
+            ]
+          },
+          {
+            "group": "Managing MCP Servers",
+            "pages": [
+              "guides/register-servers",
+              "guides/stdio-servers",
+              "guides/session-modes",
+              "guides/enable-disable"
+            ]
+          },
+          {
+            "group": "Tool Groups",
+            "pages": [
+              "guides/tool-groups",
+              "guides/prompts"
+            ]
+          },
+          {
+            "group": "Enterprise",
+            "pages": [
+              "enterprise/overview",
+              "enterprise/access-control",
+              "enterprise/observability"
+            ]
+          },
+          {
+            "group": "Integrations",
+            "pages": [
+              "integrations/claude",
+              "integrations/cursor",
+              "integrations/copilot"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Reference",
+        "groups": [
+          {
+            "group": "CLI Commands",
+            "pages": [
+              "reference/cli-overview",
+              "reference/cli-server",
+              "reference/cli-tools",
+              "reference/cli-groups",
+              "reference/cli-enterprise"
+            ]
+          },
+          {
+            "group": "HTTP API",
+            "pages": [
+              "reference/api-overview",
+              "reference/api-servers",
+              "reference/api-tools",
+              "reference/api-groups",
+              "reference/api-clients"
+            ]
+          },
+          {
+            "group": "Configuration",
+            "pages": [
+              "reference/config-file",
+              "reference/environment-variables"
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,167 @@
+---
+title: "Expose tool subsets with Tool Groups"
+description: "Create named subsets of tools with their own MCP endpoint so each client only sees the tools it needs, keeping performance sharp as your registry grows."
+---
+
+As you register more MCP servers in MCPJungle, the total number of tools visible through the gateway grows quickly. Exposing hundreds of tools to a single MCP client degrades LLM calling accuracy and slows down tool discovery. Tool Groups let you define a named subset of tools and give it its own dedicated MCP endpoint. Each client connects to a group endpoint instead of the main `/mcp` gateway, so it only sees the tools relevant to its task.
+
+## How tool groups work
+
+When you create a group, MCPJungle registers a new streamable HTTP endpoint at:
+
+```
+/v0/groups/{group-name}/mcp
+```
+
+Point your MCP client at that URL instead of the main gateway. The client will only discover and call the tools included in that group.
+
+<Note>
+  If a tool included in a group is later disabled globally or deregistered, it becomes unavailable through the group endpoint automatically. Re-enabling or re-registering the tool makes it available again without any changes to the group configuration.
+</Note>
+
+## Configuration file format
+
+You define a group in a JSON file and pass it to the `create group` command. Three fields control which tools are included:
+
+| Field | Type | Description |
+|---|---|---|
+| `name` | string | Unique name for the group (required). |
+| `description` | string | Human-readable description (optional). |
+| `included_tools` | string[] | Canonical tool names to include individually. |
+| `included_servers` | string[] | Include all tools from these MCP servers. |
+| `excluded_tools` | string[] | Remove specific tools from the resolved set (applied last). |
+
+<Warning>
+  Exclusion is always applied after inclusion. If a tool appears in both `included_tools` and `excluded_tools`, it will be excluded from the final group.
+</Warning>
+
+## Configuration approaches
+
+<Tabs>
+  <Tab title="Cherry-pick specific tools">
+    Use `included_tools` to handpick exactly which tools to expose. Tool names follow the canonical format `<server-name>__<tool-name>`.
+
+    ```json claude-tools-group.json
+    {
+      "name": "claude-tools",
+      "description": "This group only contains tools for Claude Desktop to use",
+      "included_tools": [
+        "filesystem__read_file",
+        "deepwiki__read_wiki_contents",
+        "time__get_current_time"
+      ]
+    }
+    ```
+
+    This group exposes exactly three tools regardless of how many tools are registered in MCPJungle.
+
+    <Tip>
+      Run `mcpjungle list tools` to see all available tool names before building your group configuration.
+    </Tip>
+  </Tab>
+  <Tab title="Include entire servers">
+    Use `included_servers` to pull in all tools from one or more servers. Combine with `excluded_tools` to remove specific tools you don't want to expose.
+
+    ```json claude-tools-group.json
+    {
+      "name": "claude-tools",
+      "description": "All tools from time and deepwiki servers except time__convert_time",
+      "included_servers": ["time", "deepwiki"],
+      "excluded_tools": ["time__convert_time"]
+    }
+    ```
+
+    This includes every tool from the `time` and `deepwiki` servers, then removes `time__convert_time` from the result.
+  </Tab>
+  <Tab title="Mix both approaches">
+    Combine `included_tools`, `included_servers`, and `excluded_tools` for maximum flexibility.
+
+    ```json comprehensive-tools-group.json
+    {
+      "name": "comprehensive-tools",
+      "description": "Mix of manual tools, server inclusion, and exclusions",
+      "included_tools": ["filesystem__read_file"],
+      "included_servers": ["time"],
+      "excluded_tools": ["time__convert_time"]
+    }
+    ```
+
+    This adds `filesystem__read_file` explicitly, then includes all tools from the `time` server, then removes `time__convert_time`. Exclusion runs last regardless of the order fields appear in the file.
+  </Tab>
+</Tabs>
+
+## Creating a group
+
+Pass the configuration file to the `create group` command using the `-c` flag:
+
+```bash
+mcpjungle create group -c ./claude-tools-group.json
+```
+
+MCPJungle confirms the group was created and prints its endpoint:
+
+```
+Tool Group claude-tools created successfully
+It is now accessible at the following streamable http endpoint:
+
+    http://127.0.0.1:8080/v0/groups/claude-tools/mcp
+```
+
+Configure your MCP client to connect to that URL instead of `http://127.0.0.1:8080/mcp`. The client will only see the tools in the group.
+
+## Managing groups
+
+<Steps>
+  <Step title="List all groups">
+    ```bash
+    mcpjungle list groups
+    ```
+  </Step>
+  <Step title="Inspect a specific group">
+    ```bash
+    mcpjungle get group claude-tools
+    ```
+
+    This shows the group's description, its MCP endpoint URLs, and the lists of included tools, included servers, and excluded tools.
+  </Step>
+  <Step title="Delete a group">
+    ```bash
+    mcpjungle delete group claude-tools
+    ```
+
+    Deleting a group removes its endpoint. Make sure no MCP clients are connected to that endpoint before you delete it. The tools themselves are not deleted — only the group configuration.
+  </Step>
+</Steps>
+
+## Working with tools inside a group
+
+Use the `--group` flag on `list tools` and `invoke` to scope operations to a specific group:
+
+```bash
+# List tools visible in the group
+mcpjungle list tools --group claude-tools
+
+# Invoke a tool through the group context
+mcpjungle invoke filesystem__read_file --group claude-tools --input '{"path": "README.md"}'
+```
+
+These commands are useful for verifying that a group is configured correctly before pointing a client at it.
+
+## Known limitations
+
+<AccordionGroup>
+  <Accordion title="Prompts are not supported in Tool Groups">
+    [MCP Prompts](https://modelcontextprotocol.io/specification/2025-06-18/server/prompts) are not currently available through group endpoints. Clients connected to a group endpoint cannot discover or invoke prompts. This is a known issue tracked at [mcpjungle#136](https://github.com/mcpjungle/MCPJungle/issues/136).
+  </Accordion>
+  <Accordion title="Groups cannot be updated in place">
+    There is no `update group` command. To change a group's configuration, delete the group and recreate it with the updated JSON file:
+
+    ```bash
+    mcpjungle delete group claude-tools
+    mcpjungle create group -c ./claude-tools-group.json
+    ```
+  </Accordion>
+  <Accordion title="Enterprise mode: only admins can create groups">
+    When MCPJungle runs in `enterprise` mode, only an admin account can create Tool Groups. Standard users do not have permission to create groups. Support for user-scoped groups is planned for a future release.
+  </Accordion>
+</AccordionGroup>

@@ -1,0 +1,232 @@
+---
+title: "MCPJungle CLI configuration file"
+description: "Reference for ~/.mcpjungle.conf, the YAML file the CLI reads for the registry URL and access token, plus all JSON config file formats used to register servers and create resources."
+---
+
+The MCPJungle CLI reads a YAML configuration file at `~/.mcpjungle.conf` on startup. It stores two values: the URL of the MCPJungle server and an access token for authenticated requests. Most users never edit this file by hand — `mcpjungle init-server` and `mcpjungle login` write to it automatically.
+
+## Client config file (`~/.mcpjungle.conf`)
+
+### Location and format
+
+The file lives in your home directory and uses YAML syntax:
+
+```yaml
+registry_url: http://my-server:9000
+access_token: 1YHf2LwE1LXtp5lW_vM-gmdYHlPHdqwnILitBhXE4Aw
+```
+
+Both fields are optional. If either is absent the CLI falls back to its default value or prompts you to supply it via a CLI flag.
+
+### Supported fields
+
+<ParamField path="registry_url" type="string" default="http://127.0.0.1:8080">
+  Base URL of the MCPJungle server the CLI connects to. Set this to avoid passing `--registry` on every command.
+
+  ```yaml
+  registry_url: http://my-server:9000
+  ```
+</ParamField>
+
+<ParamField path="access_token" type="string">
+  Bearer token sent in the `Authorization: Bearer` header with every API request. Required when the server runs in enterprise mode. Populated automatically by `mcpjungle init-server` (admin token) or `mcpjungle login` (user token).
+
+  ```yaml
+  access_token: 1YHf2LwE1LXtp5lW_vM-gmdYHlPHdqwnILitBhXE4Aw
+  ```
+</ParamField>
+
+### Value precedence
+
+When the CLI resolves the registry URL it uses the following order, highest priority first:
+
+1. `--registry` flag passed explicitly on the command line
+2. `registry_url` set in `~/.mcpjungle.conf`
+3. Built-in default (`http://127.0.0.1:8080`)
+
+<Tip>
+  If you pass `--registry` manually but `registry_url` is not yet in your config file, the CLI prints a tip suggesting you add it to avoid repeating the flag.
+</Tip>
+
+### Populating the file automatically
+
+<Steps>
+  <Step title="Enterprise server (admin token)">
+    After starting the server in enterprise mode, run `init-server` on the machine where you manage MCPJungle. It creates the admin user and writes both `registry_url` and `access_token` to `~/.mcpjungle.conf`:
+
+    ```bash
+    mcpjungle init-server
+    ```
+  </Step>
+  <Step title="User login (user token)">
+    When an admin creates a user account, they share the access token with the new user. The user runs `login` with the token as a positional argument to store it in their own `~/.mcpjungle.conf`:
+
+    ```bash
+    mcpjungle --registry http://my-server:9000 login <user-token>
+    ```
+  </Step>
+  <Step title="Manual edit">
+    You can create or edit the file directly in any text editor. Make sure the values are valid YAML strings.
+  </Step>
+</Steps>
+
+---
+
+## JSON config file formats
+
+Several `mcpjungle` commands accept a `-c` / `--conf` flag pointing to a JSON file instead of inline CLI flags. This section documents every supported JSON format.
+
+### `${VAR_NAME}` placeholder substitution
+
+All JSON config files support environment variable placeholders in string fields. Before sending the request to the server, the CLI expands every `${VAR_NAME}` occurrence using the current shell environment.
+
+Rules:
+- Only `${VAR_NAME}` syntax is recognized — not `$VAR_NAME`.
+- Placeholders can appear anywhere inside a string, including as a substring: `"prefix-${VAR}-suffix"`.
+- Substitution runs in the CLI process, so the variable must be set in the environment where you run the command.
+- Placeholders resolve in all string fields, including nested objects and string arrays.
+- If a referenced variable is not set, the command fails with a descriptive error.
+
+```json
+{
+  "name": "${MCP_SERVER_NAME}",
+  "transport": "streamable_http",
+  "url": "https://api.example.com/workspaces/${WORKSPACE_ID}/mcp",
+  "bearer_token": "${API_TOKEN}"
+}
+```
+
+### Register a Streamable HTTP server
+
+Used with `mcpjungle register -c <file>`.
+
+```json
+{
+  "name": "calculator",
+  "transport": "streamable_http",
+  "description": "Provides basic math tools",
+  "url": "http://127.0.0.1:8000/mcp",
+  "bearer_token": "<optional bearer token>",
+  "headers": {
+    "<custom-header>": "<value>"
+  }
+}
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `name` | string | Yes | Unique name for this server in MCPJungle. |
+| `transport` | string | Yes | Must be `"streamable_http"`. |
+| `description` | string | No | Human-readable description. |
+| `url` | string | Yes | Full URL of the MCP server endpoint. |
+| `bearer_token` | string | No | If set, MCPJungle adds `Authorization: Bearer <token>` to every upstream request. |
+| `headers` | object | No | Additional HTTP headers to forward. A `"Authorization"` entry here overrides `bearer_token`. |
+
+### Register a STDIO server
+
+Used with `mcpjungle register -c <file>`.
+
+```json
+{
+  "name": "filesystem",
+  "transport": "stdio",
+  "description": "Filesystem MCP server",
+  "command": "npx",
+  "args": ["-y", "@modelcontextprotocol/server-filesystem", "."],
+  "env": {
+    "KEY": "value"
+  },
+  "session_mode": "stateless"
+}
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `name` | string | Yes | Unique name for this server in MCPJungle. |
+| `transport` | string | Yes | Must be `"stdio"`. |
+| `description` | string | No | Human-readable description. |
+| `command` | string | Yes | Executable to run the MCP server process (e.g., `"npx"`, `"uvx"`). |
+| `args` | string array | No | Arguments passed to `command`. |
+| `env` | object | No | Environment variables injected into the server process. |
+| `session_mode` | string | No | Connection lifecycle: `"stateless"` (default) creates a new process per call; `"stateful"` keeps the process alive between calls. |
+
+### Create a tool group
+
+Used with `mcpjungle create group -c <file>`.
+
+```json
+{
+  "name": "claude-tools",
+  "description": "Tools exposed to Claude Desktop",
+  "included_tools": [
+    "filesystem__read_file",
+    "time__get_current_time"
+  ],
+  "included_servers": ["deepwiki"],
+  "excluded_tools": ["deepwiki__search"]
+}
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `name` | string | Yes | Unique name for the tool group. |
+| `description` | string | No | Human-readable description. |
+| `included_tools` | string array | No | Explicit list of tools to include, in `<server>__<tool>` format. |
+| `included_servers` | string array | No | Server names whose entire tool set is included. |
+| `excluded_tools` | string array | No | Tools to remove from the final set. Exclusions are always applied last, regardless of how a tool was included. |
+
+<Note>
+  At least one of `included_tools` or `included_servers` should be set, otherwise the group will be empty.
+</Note>
+
+### Create an MCP client
+
+Used with `mcpjungle create mcp-client --conf <file>` (enterprise mode).
+
+```json
+{
+  "name": "cursor-local",
+  "allowed_servers": ["calculator", "github"],
+  "access_token": "my_secret_token_123",
+  "access_token_ref": {
+    "file": "/run/secrets/mcpjungle_token",
+    "env": "MCPJUNGLE_CLIENT_TOKEN"
+  }
+}
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `name` | string | Yes | Unique name for this MCP client. |
+| `allowed_servers` | string array | No | Server names the client may access. Use `"*"` to allow all servers. Omit to deny all. |
+| `access_token` | string | No | Inline token value. For testing only. |
+| `access_token_ref.file` | string | No | Path to a plain-text file containing only the token string. |
+| `access_token_ref.env` | string | No | Name of an environment variable containing the token string. |
+
+<Warning>
+  When creating a client from a config file, you must supply a token via `access_token` or `access_token_ref`. MCPJungle cannot print a generated token back to the console when reading from a file.
+</Warning>
+
+### Create a user account
+
+Used with `mcpjungle create user --conf <file>` (enterprise mode).
+
+```json
+{
+  "name": "charlie",
+  "access_token": "charlies_secret_token",
+  "access_token_ref": {
+    "file": "/path/to/token-file.txt",
+    "env": "CHARLIE_TOKEN"
+  }
+}
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `name` | string | Yes | Unique username. |
+| `access_token` | string | No | Inline token value. For testing only. |
+| `access_token_ref.file` | string | No | Path to a plain-text file containing only the token string. |
+| `access_token_ref.env` | string | No | Name of an environment variable containing the token string. |
+
+The same `${VAR_NAME}` placeholder substitution applies to user config files. When using a config file you must supply a token — MCPJungle cannot print a generated one to the console.

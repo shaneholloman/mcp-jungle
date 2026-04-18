@@ -1,0 +1,210 @@
+---
+title: "mcpjungle tool group commands"
+description: "Reference for create group, list groups, get group, delete group, and update group — all flags and the JSON config file format for MCPJungle tool groups."
+---
+
+Tool groups let you expose a curated subset of registered tools to specific MCP clients. Instead of giving a client access to every tool across all your servers, you define a group with only the tools that client needs. Each group is served as its own streamable HTTP MCP endpoint.
+
+This page documents all commands for creating and managing tool groups.
+
+---
+
+## `create group`
+
+Creates a new tool group from a JSON configuration file.
+
+```bash
+mcpjungle create group --conf <file>
+```
+
+### Flags
+
+<ParamField body="-c / --conf" type="string" required>
+  Path to a JSON configuration file defining the group. This flag is required.
+</ParamField>
+
+### Config file format
+
+The configuration file defines which tools are included in the group. You can include tools explicitly, include all tools from one or more servers, and exclude individual tools from that set.
+
+```json my-group.json
+{
+  "name": "engineering-tools",
+  "description": "Tools for the engineering agent",
+  "included_tools": [
+    "github__create_issue",
+    "github__list_repos"
+  ],
+  "included_servers": [
+    "jira"
+  ],
+  "excluded_tools": [
+    "jira__delete_project"
+  ]
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | Yes | Unique name for the group. Cannot be changed after creation. |
+| `description` | string | No | Human-readable description. |
+| `included_tools` | array | No | List of specific tool names to include in the group. |
+| `included_servers` | array | No | List of server names. All tools from these servers are included. |
+| `excluded_tools` | array | No | List of tool names to exclude. Useful when using `included_servers` to include all but a few tools. |
+
+<Tip>
+  You can mix `included_tools` and `included_servers`. For example, include all tools from a `jira` server via `included_servers`, then add a handful of specific tools from `github` via `included_tools`. Use `excluded_tools` to remove any tools you do not want to expose.
+</Tip>
+
+<Note>
+  If a tool listed in `included_tools` is later deleted or disabled globally, it will not be served through the group endpoint — but it remains in the group's configuration. Run `get group` to see the full configured list and `list tools --group` to see only currently active tools.
+</Note>
+
+### Output
+
+After successful creation, the CLI prints the endpoint URLs for the new group:
+
+```text
+Tool Group engineering-tools created successfully
+It is now accessible at the following streamable http endpoint:
+
+    http://127.0.0.1:8080/v0/groups/engineering-tools/mcp
+```
+
+Point your MCP client at this endpoint to access only the tools in this group.
+
+### Example
+
+```bash
+mcpjungle create group --conf ./my-group.json
+```
+
+---
+
+## `list groups`
+
+Lists all tool groups registered in the gateway.
+
+```bash
+mcpjungle list groups
+```
+
+Each group is shown with its name and description. For detailed configuration including included and excluded tools, use `get group`.
+
+### Example
+
+```bash
+mcpjungle list groups
+```
+
+---
+
+## `get group`
+
+Retrieves the full configuration and endpoint URLs for a specific tool group.
+
+```bash
+mcpjungle get group <name>
+```
+
+The output includes:
+
+- Group name and description
+- Streamable HTTP and SSE endpoint URLs
+- List of explicitly included tools (`included_tools`)
+- List of included servers (`included_servers`)
+- List of excluded tools (`excluded_tools`)
+
+<Note>
+  `get group` shows the configured list of tools and servers as defined when the group was created or last updated. A tool listed here may not currently be active if it has been globally disabled or deleted. Run `list tools --group <name>` to see only the tools that are active right now.
+</Note>
+
+### Example
+
+```bash
+mcpjungle get group engineering-tools
+```
+
+---
+
+## `delete group`
+
+Deletes a tool group from the gateway. The group's endpoint immediately stops responding.
+
+```bash
+mcpjungle delete group <name>
+```
+
+<Warning>
+  Before deleting a group, make sure no MCP clients are still pointing at its endpoint. Deleting a group does not delete the tools inside it — only the group itself and its endpoint are removed. Tools remain available through the main `/mcp` endpoint and other groups they belong to.
+</Warning>
+
+### Example
+
+```bash
+mcpjungle delete group engineering-tools
+```
+
+---
+
+## `update group`
+
+Updates the configuration of an existing tool group. Provide a new configuration file — it completely replaces the existing group configuration.
+
+```bash
+mcpjungle update group --conf <file>
+```
+
+### Flags
+
+<ParamField body="-c / --conf" type="string" required>
+  Path to a JSON configuration file with the updated group definition. The `name` field in the file identifies which group to update. The group name cannot be changed.
+</ParamField>
+
+<Warning>
+  Updating a group takes effect immediately with no downtime for connected clients. However, any tools removed from the configuration (by removing them from `included_tools`/`included_servers` or adding them to `excluded_tools`) are instantly unavailable through the group's endpoint.
+</Warning>
+
+### Example
+
+```bash
+mcpjungle update group --conf ./my-group-updated.json
+```
+
+---
+
+## `list tools --group`
+
+Lists the tools that are currently active within a specific tool group. This only shows tools that exist in the gateway at the time of the query.
+
+```bash
+mcpjungle list tools --group <name>
+```
+
+Use `get group` if you want to see the full configured tool list including tools that may be currently deleted or disabled.
+
+### Example
+
+```bash
+mcpjungle list tools --group engineering-tools
+```
+
+---
+
+## `invoke --group`
+
+Invokes a tool and validates that it belongs to the specified group before calling it.
+
+```bash
+mcpjungle invoke <tool-name> --input '<json>' --group <group-name>
+```
+
+If the tool is not part of the group, the command returns an error without calling the tool. This is useful for testing that a group is configured correctly.
+
+### Example
+
+```bash
+mcpjungle invoke github__create_issue \
+  --input '{"owner": "myorg", "repo": "myrepo", "title": "Test"}' \
+  --group engineering-tools
+```

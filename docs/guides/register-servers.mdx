@@ -1,0 +1,165 @@
+---
+title: "Register Streamable HTTP MCP servers"
+description: "Register remote MCP servers with MCPJungle using the Streamable HTTP transport — via CLI flags, config files, and bearer token authentication."
+---
+
+MCPJungle can proxy any MCP server that speaks the [Streamable HTTP transport](https://modelcontextprotocol.io/specification/2025-03-26/basic/transports#streamable-http). Once registered, all tools that server provides are available to every MCP client connected to MCPJungle through the gateway's `/mcp` endpoint.
+
+## Register a server with CLI flags
+
+The quickest way to register a Streamable HTTP server is with the `register` command and inline flags:
+
+```bash
+mcpjungle register --name calculator --description "Provides some basic math tools" --url http://127.0.0.1:8000/mcp
+```
+
+MCPJungle connects to the server, loads its tool list, and makes those tools available immediately.
+
+<Note>
+If MCPJungle is running inside Docker on macOS or Windows, the container cannot reach `127.0.0.1` on your host. Use `host.docker.internal` instead:
+
+```bash
+mcpjungle register --name calculator --description "Provides some basic math tools" --url http://host.docker.internal:8000/mcp
+```
+</Note>
+
+## Register a server from a config file
+
+For servers that need authentication or custom headers — or when you want to keep registration configs in version control — use a JSON config file:
+
+```bash
+mcpjungle register -c ./calculator.json
+```
+
+The full config file format for a Streamable HTTP server:
+
+```json
+{
+  "name": "calculator",
+  "transport": "streamable_http",
+  "description": "Provides some basic math tools",
+  "url": "http://127.0.0.1:8000/mcp",
+  "bearer_token": "<optional bearer token>",
+  "headers": {
+    "<custom-header>": "<value>"
+  }
+}
+```
+
+| Field          | Required | Description                                                                                       |
+| -------------- | -------- | ------------------------------------------------------------------------------------------------- |
+| `name`         | Yes      | Unique identifier for this server. No spaces, special characters, or consecutive underscores.     |
+| `transport`    | Yes      | Must be `"streamable_http"` for HTTP-based servers.                                               |
+| `description`  | No       | Human-readable description surfaced in the CLI and API.                                           |
+| `url`          | Yes      | The full URL of the MCP server's endpoint (e.g., `https://example.com/mcp`).                     |
+| `bearer_token` | No       | If set, MCPJungle adds `Authorization: Bearer <token>` to every request to this server.          |
+| `headers`      | No       | Map of additional HTTP headers to forward. If `Authorization` is set here, it overrides `bearer_token`. |
+
+## Authenticating with a bearer token
+
+Many SaaS MCP servers (HuggingFace, Stripe, etc.) require an API token. Pass it with the `--bearer-token` flag:
+
+```bash
+mcpjungle register \
+  --name huggingface \
+  --description "HuggingFace MCP Server" \
+  --url https://huggingface.co/mcp \
+  --bearer-token <your-hf-api-token>
+```
+
+Or include it in the config file:
+
+```json
+{
+  "name": "huggingface",
+  "transport": "streamable_http",
+  "description": "HuggingFace MCP Server",
+  "url": "https://huggingface.co/mcp",
+  "bearer_token": "<your-hf-api-token>"
+}
+```
+
+For servers that need a custom `Authorization` format or additional headers, use the `headers` field directly:
+
+```json
+{
+  "name": "sourcegraph",
+  "transport": "streamable_http",
+  "url": "https://sourcegraph.mycompany.com/.api/mcp",
+  "headers": {
+    "Authorization": "token <your-sourcegraph-token>",
+    "X-Custom-Header": "custom-value"
+  }
+}
+```
+
+## Environment variable substitution
+
+Config files support `${VAR_NAME}` placeholders in any string field. The CLI resolves them from the environment before sending the request to MCPJungle:
+
+```json
+{
+  "name": "affine-main",
+  "transport": "streamable_http",
+  "description": "AFFiNE workspace MCP server",
+  "url": "https://app.affine.pro/api/workspaces/${AFFINE_WORKSPACE_ID}/mcp",
+  "bearer_token": "${AFFINE_API_TOKEN}",
+  "headers": {
+    "X-Workspace": "${AFFINE_WORKSPACE_ID}"
+  }
+}
+```
+
+<Warning>
+If a referenced environment variable is not set when you run `mcpjungle register`, the command fails with an error. Placeholders must resolve to a value at registration time.
+</Warning>
+
+Key rules for substitution:
+
+- Only the `${VAR_NAME}` syntax is recognized — not `$VAR_NAME`.
+- Placeholders can appear anywhere inside a string value, including as a substring: `"prefix-${VAR}-suffix"`.
+- Substitution runs in the CLI process, so the variable must be set in the shell where you run the command.
+- Nested objects and string arrays are also resolved.
+
+## Tool naming convention
+
+MCPJungle uses a canonical name for every tool that follows the pattern `<server-name>__<tool-name>` (two underscores):
+
+```text
+github__git_commit
+calculator__multiply
+context7__get-library-docs
+```
+
+Use this canonical name when calling `mcpjungle invoke`, `mcpjungle usage`, or when your MCP client refers to a specific tool.
+
+## Deregister a server
+
+To remove a server from MCPJungle:
+
+```bash
+mcpjungle deregister calculator
+```
+
+Deregistering removes the server and all the tools, prompts, and resources it provided. They are no longer visible to MCP clients.
+
+## Configure a custom registry URL
+
+By default, the CLI connects to MCPJungle at `http://127.0.0.1:8080`. If your server runs on a different host or port, configure the registry URL in one of two ways:
+
+<Tabs>
+  <Tab title="--registry flag">
+    Pass the URL inline with every command:
+
+    ```bash
+    mcpjungle --registry http://my-server:9000 register --name calculator --url http://127.0.0.1:8000/mcp
+    ```
+  </Tab>
+  <Tab title="Config file">
+    Create or edit `~/.mcpjungle.conf` so you don't repeat the flag:
+
+    ```yaml
+    registry_url: http://my-server:9000
+    ```
+  </Tab>
+</Tabs>

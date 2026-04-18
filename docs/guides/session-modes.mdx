@@ -1,0 +1,95 @@
+---
+title: "Stateful vs stateless server connections"
+description: "Understand MCPJungle's two session modes — stateless and stateful — and learn when persistent connections solve the STDIO cold-start problem."
+---
+
+When an MCP client calls a tool through MCPJungle, the gateway must open a connection to the upstream MCP server, execute the tool, and return the result. How MCPJungle manages that connection lifecycle is controlled by the server's **session mode**.
+
+## Stateless mode (default)
+
+In stateless mode, MCPJungle opens a fresh connection to the upstream MCP server for every tool call. Once the call completes, the connection is closed immediately.
+
+This is the default behavior and requires no configuration. It keeps memory usage predictable, avoids leaked connections, and means each tool call is fully independent of the last.
+
+```json
+{
+  "name": "calculator",
+  "transport": "streamable_http",
+  "url": "http://127.0.0.1:8000/mcp"
+}
+```
+
+No `session_mode` field is needed — `"stateless"` is assumed when the field is absent or empty.
+
+## The cold-start problem
+
+Stateless mode introduces latency for MCP servers that take time to initialize. The most common case is STDIO-based servers: every tool call spawns a new process, the process starts up (potentially installing packages, loading models, or establishing network connections), executes the tool, and then exits.
+
+If a server takes several seconds to start, each tool call incurs that startup cost. This is called the **cold-start problem**.
+
+## Stateful mode
+
+Stateful mode solves the cold-start problem by keeping the connection to the upstream server open across multiple tool calls.
+
+Set `session_mode` to `"stateful"` in your server config:
+
+```json
+{
+  "name": "filesystem",
+  "transport": "stdio",
+  "command": "npx",
+  "args": ["-y", "@modelcontextprotocol/server-filesystem", "."],
+  "session_mode": "stateful"
+}
+```
+
+With stateful mode enabled:
+
+1. The first tool call to this server establishes the connection (and spawns the process for STDIO servers).
+2. The connection remains open after the call completes.
+3. All subsequent tool calls to the same server reuse the existing connection, skipping the startup overhead entirely.
+
+## When is a stateful connection closed?
+
+A persistent connection is closed in three situations:
+
+<CardGroup cols={1}>
+  <Card title="MCPJungle server stops" icon="power-off">
+    All stateful connections are closed during graceful shutdown of the MCPJungle server process.
+  </Card>
+  <Card title="Server is deregistered" icon="trash">
+    Running `mcpjungle deregister <name>` closes the connection and removes the server from the registry.
+  </Card>
+  <Card title="Idle timeout expires" icon="clock">
+    If `SESSION_IDLE_TIMEOUT_SEC` is set on the MCPJungle server, connections that have been idle for longer than that duration are closed automatically.
+  </Card>
+</CardGroup>
+
+## Configuring the idle timeout
+
+The `SESSION_IDLE_TIMEOUT_SEC` environment variable controls how long MCPJungle waits before closing an idle stateful connection. Set it on the MCPJungle server before startup:
+
+```bash
+export SESSION_IDLE_TIMEOUT_SEC=300  # close connections idle for more than 5 minutes
+mcpjungle start
+```
+
+The default value is `-1`, which disables the timeout entirely — stateful connections stay open until the server stops or the server is deregistered.
+
+| Value | Behavior                                                  |
+| ----- | --------------------------------------------------------- |
+| `-1`  | No timeout. Connection stays open indefinitely (default). |
+| `N`   | Connection closed after `N` seconds of inactivity.        |
+
+## Choosing a session mode
+
+<Tip>
+Use stateless mode whenever possible. It is simpler, avoids resource leaks, and is sufficient for most Streamable HTTP servers that respond quickly.
+</Tip>
+
+Use stateful mode when:
+
+- You are running STDIO servers that have a slow startup time (installing packages, loading large models, etc.).
+- The upstream server requires session state to be maintained between calls (for example, after a login step).
+
+Avoid stateful mode for servers that are fast to connect or where you want strict isolation between tool calls.

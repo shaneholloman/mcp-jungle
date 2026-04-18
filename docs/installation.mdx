@@ -1,0 +1,90 @@
+---
+title: "Install MCPJungle"
+description: "Install the MCPJungle CLI binary on your machine using Homebrew, Docker, or a pre-built binary from GitHub Releases."
+---
+
+MCPJungle ships as a standalone binary that acts as both the gateway server and the CLI client. Install it on your local machine to use the CLI, or pull the Docker image to run the gateway server.
+
+<Tabs>
+  <Tab title="Homebrew">
+    Homebrew is the recommended installation method on macOS and Linux.
+
+    ```bash
+    brew install mcpjungle/mcpjungle/mcpjungle
+    ```
+
+    <Warning>
+      On macOS, you must use Homebrew. The pre-built binary available on the Releases page is not [notarized](https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution) yet, so macOS will block it from running.
+    </Warning>
+
+    Verify the installation:
+
+    ```bash
+    mcpjungle version
+    ```
+  </Tab>
+
+  <Tab title="Docker">
+    Pull the official MCPJungle Docker image from the GitHub Container Registry:
+
+    ```bash
+    docker pull ghcr.io/mcpjungle/mcpjungle
+    ```
+
+    The standard image is minimal — it contains only a base image and the `mcpjungle` binary — making it suitable for production deployments.
+
+    If you need to register stdio-based MCP servers that rely on `npx` or `uvx`, use the `stdio`-tagged image instead:
+
+    ```bash
+    MCPJUNGLE_IMAGE_TAG=latest-stdio docker compose up -d
+    ```
+
+    <Note>
+      The `stdio`-tagged image is significantly larger than the standard image. Use it only when you need to run stdio-based MCP servers such as `filesystem`, `github`, or `time` inside the container.
+    </Note>
+
+    For local development, the recommended approach is to use Docker Compose. See the [Deploy with Docker](/deployment/docker) guide for details.
+  </Tab>
+
+  <Tab title="Binary">
+    Pre-built binaries for Linux and macOS are available on the [GitHub Releases page](https://github.com/mcpjungle/MCPJungle/releases).
+
+    Download the binary for your platform, make it executable, and move it to a directory on your `PATH`.
+
+    <Warning>
+      On macOS, the binary is not notarized, so Gatekeeper will block it from running. Use Homebrew instead.
+    </Warning>
+
+    Verify the installation after placing the binary on your `PATH`:
+
+    ```bash
+    mcpjungle version
+    ```
+  </Tab>
+</Tabs>
+
+## After installation
+
+Once the CLI is installed, connect it to a running MCPJungle server. By default, the CLI connects to `http://127.0.0.1:8080`. If your server is running elsewhere, set the registry URL in your config file:
+
+```yaml
+# ~/.mcpjungle.conf
+registry_url: http://my-server:8080
+```
+
+Or pass it per command using the `--registry` flag:
+
+```bash
+mcpjungle --registry http://my-server:8080 list tools
+```
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Start the gateway, register your first MCP server, and connect Claude.
+  </Card>
+  <Card title="Deploy with Docker" icon="docker" href="/deployment/docker">
+    Run the MCPJungle server locally or in production using Docker Compose.
+  </Card>
+</CardGroup>

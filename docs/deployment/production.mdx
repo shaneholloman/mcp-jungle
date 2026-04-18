@@ -1,0 +1,97 @@
+---
+title: "Deploy MCPJungle for production"
+description: "Run MCPJungle in enterprise mode for teams and organizations: enable stricter security policies, initialize the server, and manage admin credentials."
+---
+
+Enterprise mode is designed for teams and organizations hosting MCPJungle on a shared server. It enforces authentication and access control, enables OpenTelemetry metrics by default, and requires an explicit initialization step to create the admin user.
+
+## Start in enterprise mode
+
+You can enable enterprise mode in three ways:
+
+<Tabs>
+  <Tab title="CLI flag">
+    ```bash
+    mcpjungle start --enterprise
+    ```
+  </Tab>
+  <Tab title="Environment variable">
+    ```bash
+    export SERVER_MODE=enterprise
+    mcpjungle start
+    ```
+  </Tab>
+  <Tab title="Docker Compose">
+    Use the production compose file, which sets `SERVER_MODE=enterprise` by default:
+
+    ```bash
+    docker compose -f docker-compose.prod.yaml up -d
+    ```
+  </Tab>
+</Tabs>
+
+<Note>
+  The `SERVER_MODE=enterprise` environment variable accepts `development` and `enterprise` as valid values. The former value `production` is deprecated — if you use it, MCPJungle will warn you and treat it as `enterprise`.
+</Note>
+
+## Initialize the server
+
+After the first boot in enterprise mode, you must initialize the server before any clients can connect. Run the following command from your client machine:
+
+```bash
+mcpjungle init-server
+```
+
+This creates an admin user and writes its API access token to `~/.mcpjungle.conf` on your local machine. All subsequent CLI commands that require authentication will read from this file automatically.
+
+<Warning>
+  The admin token is only displayed once. Store it securely. If you lose it, you will need to reset the server.
+</Warning>
+
+## Run with Docker
+
+For production, use the standard (minimal) MCPJungle image. It is based on `distroless/base` and contains only the `mcpjungle` binary — no shell, no extra tooling.
+
+Supply your database connection string with the `DATABASE_URL` environment variable:
+
+```bash
+docker run -d \
+  --name mcpjungle-server \
+  -e SERVER_MODE=enterprise \
+  -e DATABASE_URL=postgres://user:password@your-db-host:5432/mcpjungle \
+  -p 8080:8080 \
+  ghcr.io/mcpjungle/mcpjungle:latest
+```
+
+<Tip>
+  For production, deploy a separate managed Postgres cluster and point `DATABASE_URL` at it rather than running Postgres in the same container. See [Configure MCPJungle's database](/deployment/database) for all database options.
+</Tip>
+
+## Graceful shutdown
+
+MCPJungle handles `SIGTERM` for graceful shutdown. It closes all active stateful sessions, flushes telemetry, and stops accepting new connections before exiting.
+
+Send `SIGTERM` to stop the server cleanly:
+
+```bash
+# For a process running directly
+kill -SIGTERM <pid>
+
+# For a Docker container
+docker stop mcpjungle-server
+```
+
+`docker stop` sends `SIGTERM` by default, so no extra flags are needed.
+
+## What enterprise mode enables
+
+| Feature | Development mode | Enterprise mode |
+|---------|-----------------|-----------------|
+| Authentication | Disabled | Required for MCP clients |
+| Access control (ACLs) | Disabled | Enabled |
+| OpenTelemetry metrics | Disabled (opt-in) | Enabled by default |
+| Server initialization | Automatic | Manual (`init-server`) |
+
+<Info>
+  Even in enterprise mode, telemetry can be overridden with `OTEL_ENABLED=false` if you want to disable it.
+</Info>

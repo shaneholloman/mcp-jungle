@@ -1,0 +1,114 @@
+---
+title: "Run MCPJungle with Docker Compose"
+description: "Two Docker Compose configurations for MCPJungle: development mode for individuals on a local machine, and enterprise mode for teams hosting on a remote server."
+---
+
+Docker Compose is the recommended way to run the MCPJungle server. Two compose files are provided: one tuned for individuals running MCPJungle locally, and one for organizations deploying it on a remote server.
+
+## Choose a compose file
+
+<CardGroup cols={2}>
+  <Card title="Development" icon="laptop">
+    `docker-compose.yaml` — for individuals running MCPJungle on a local machine. Uses the `stdio` image by default and runs in development mode with no authentication required.
+  </Card>
+  <Card title="Enterprise" icon="building">
+    `docker-compose.prod.yaml` — for teams and organizations hosting MCPJungle on a remote server. Uses the standard minimal image, runs in enterprise mode, and includes Prometheus and pgAdmin.
+  </Card>
+</CardGroup>
+
+## Development mode
+
+`docker-compose.yaml` starts MCPJungle in development mode alongside a Postgres container. It uses the `latest-stdio` image by default, which bundles `npx` and `uvx` so you can register stdio-based MCP servers without any extra setup.
+
+<Steps>
+  <Step title="Download the compose file">
+    ```bash
+    curl -O https://raw.githubusercontent.com/mcpjungle/MCPJungle/refs/heads/main/docker-compose.yaml
+    ```
+  </Step>
+  <Step title="Start the server">
+    ```bash
+    docker compose up -d
+    ```
+
+    This brings up two containers: `mcpjungle-db` (Postgres 17) and `mcpjungle-server`. The server waits for the database health check to pass before starting.
+  </Step>
+  <Step title="Verify the server is running">
+    ```bash
+    curl http://localhost:8080/health
+    ```
+
+    The server listens on port `8080` by default. You can override this with the `HOST_PORT` environment variable.
+  </Step>
+</Steps>
+
+## Enterprise mode
+
+`docker-compose.prod.yaml` starts MCPJungle in enterprise mode. It also starts a Prometheus container (port `9090`) and a pgAdmin container (port `5050`) for observability and database management.
+
+<Steps>
+  <Step title="Download the compose file">
+    ```bash
+    curl -O https://raw.githubusercontent.com/mcpjungle/MCPJungle/refs/heads/main/docker-compose.prod.yaml
+    ```
+  </Step>
+  <Step title="Start the server">
+    ```bash
+    docker compose -f docker-compose.prod.yaml up -d
+    ```
+  </Step>
+  <Step title="Initialize the server">
+    After the first boot, run `init-server` from your client machine to create the admin user and store its access token:
+
+    ```bash
+    mcpjungle init-server
+    ```
+
+    See the [production deployment guide](/deployment/production) for details on this step.
+  </Step>
+</Steps>
+
+## Choosing an image
+
+MCPJungle publishes two Docker image variants:
+
+| Image tag | Base | Includes | Size |
+|-----------|------|----------|------|
+| `latest` | `distroless/base` | `mcpjungle` binary only | Minimal |
+| `latest-stdio` | `uv` (Debian) | `mcpjungle` + `npx` + `uvx` | Larger |
+
+- `docker-compose.yaml` defaults to `latest-stdio` — suitable for local use with stdio-based MCP servers like `filesystem`, `time`, and `github`.
+- `docker-compose.prod.yaml` defaults to `latest` — the minimal image recommended for production.
+
+If you need stdio support in enterprise mode, override the image tag:
+
+```bash
+MCPJUNGLE_IMAGE_TAG=latest-stdio docker compose -f docker-compose.prod.yaml up -d
+```
+
+<Note>
+  If your stdio servers rely on tools other than `npx` or `uvx`, you need to build a custom Docker image that includes those dependencies alongside the `mcpjungle` binary.
+</Note>
+
+## Run CLI commands inside a container
+
+The standard image does not include a shell. Use `docker exec` or `kubectl exec` to invoke the `mcpjungle` binary directly:
+
+<Tabs>
+  <Tab title="Docker">
+    ```bash
+    docker exec -it <container_name> /mcpjungle
+    ```
+  </Tab>
+  <Tab title="Kubernetes">
+    ```bash
+    kubectl -n <namespace> exec -it po/<pod_name> -- /mcpjungle
+    ```
+  </Tab>
+</Tabs>
+
+For example, to list registered MCP servers from inside a running container:
+
+```bash
+docker exec -it mcpjungle-server /mcpjungle list servers
+```
