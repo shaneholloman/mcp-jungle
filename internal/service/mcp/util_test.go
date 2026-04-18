@@ -53,6 +53,38 @@ func TestValidateServerName(t *testing.T) {
 	}
 }
 
+func TestValidateURL(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		wantErr bool
+	}{
+		{"valid http", "http://example.com", false},
+		{"valid https", "https://example.com", false},
+		{"valid uppercase scheme", "HTTP://example.com", false},
+		{"valid with path", "http://example.com/mcp", false},
+		{"valid with port", "http://localhost:8080/mcp", false},
+		{"no scheme", "blahblahblah", true},
+		{"ftp scheme", "ftp://example.com", true},
+		{"empty", "", true},
+		{"no host", "http://", true},
+		{"scheme only", "https://", true},
+		{"missing host with path", "http:///foo", true},
+		{"missing host without slashes", "https:example.com", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateURL(tt.input)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("validateURL(%q) error = %v, wantErr %v", tt.input, err, tt.wantErr)
+			}
+			if tt.wantErr && !errors.Is(err, apierrors.ErrInvalidInput) {
+				t.Errorf("validateURL(%q) error = %v, want ErrInvalidInput", tt.input, err)
+			}
+		})
+	}
+}
+
 func TestMergeServerToolNames(t *testing.T) {
 	tests := []struct {
 		server string
