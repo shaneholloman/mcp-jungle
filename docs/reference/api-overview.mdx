@@ -1,9 +1,9 @@
 ---
-title: "MCPJungle HTTP API overview"
-description: "Base URL, authentication, access levels, and a complete map of every endpoint group and MCP proxy surface exposed by the MCPJungle gateway server."
+title: "HTTP API overview"
+description: "Overview of mcpjungle server REST API and how to interact with it."
 ---
 
-The MCPJungle server exposes two families of HTTP endpoints: a REST management API under `/api/v0` for registering servers, invoking tools, and administering the system, and a set of MCP proxy endpoints that AI agents connect to directly. All responses are JSON unless otherwise noted.
+The Mcpjungle server exposes two families of HTTP endpoints: a REST management API under `/api/v0` for registering servers, invoking tools, and administering the system, and a set of MCP proxy endpoints that AI agents connect to directly. All responses are JSON unless otherwise noted.
 
 ## Base URL
 
@@ -15,7 +15,9 @@ The port is `8080` by default. Every REST management endpoint is prefixed with `
 
 ## Authentication
 
-In **development mode** the server accepts all requests without credentials. In **enterprise mode** every request must carry a bearer token:
+In **development mode**, the server doesn't enforce any authentication.
+
+In **enterprise mode** every request must carry a bearer token:
 
 ```bash
 Authorization: Bearer <your-access-token>
@@ -45,20 +47,14 @@ curl http://localhost:8080/api/v0/servers \
 
 ## Endpoint groups
 
-<CardGroup cols={2}>
-  <Card title="Servers" icon="server" href="/reference/api-servers">
-    Register, deregister, enable, and disable upstream MCP servers. Admin-only write operations; users can list.
-  </Card>
-  <Card title="Tools" icon="wrench" href="/reference/api-tools">
-    List, fetch, invoke, enable, and disable tools. Also covers prompt listing and rendering.
-  </Card>
-  <Card title="Tool groups" icon="layer-group" href="/reference/api-groups">
-    Create and manage named subsets of tools to expose targeted MCP surfaces to specific clients.
-  </Card>
-  <Card title="Clients and users" icon="users" href="/reference/api-clients">
-    Enterprise-only endpoints for managing MCP clients and human users, including token issuance.
-  </Card>
-</CardGroup>
+The REST API surface is organized into a few practical areas:
+
+- `Servers`: register, deregister, enable, and disable upstream MCP servers
+- `Tools, prompts, and resources`: list, inspect, invoke, and fetch content exposed through registered servers
+- `Tool groups`: create and manage curated subsets of tools for narrower MCP surfaces
+- `Clients and users`: enterprise-only identity and access management
+
+Use the CLI and governance guides for the current workflows while the API reference remains consolidated on this overview page.
 
 ## System endpoints
 
@@ -79,10 +75,6 @@ Returns the running server version.
 ```json
 { "version": "0.4.2" }
 ```
-
-### `POST /init`
-
-One-time endpoint to initialize the server. Sets the operating mode (`dev` or `enterprise`) and creates the initial admin user in enterprise mode. Once initialized, this endpoint returns an error.
 
 ## MCP proxy endpoints
 
@@ -107,7 +99,7 @@ These endpoints implement the [Model Context Protocol](https://modelcontextproto
 GET /metrics
 ```
 
-Exposed only when MCPJungle is started with OpenTelemetry enabled. Returns Prometheus-format metrics. This endpoint is not secured by the standard bearer-token middleware — secure it at the network level if needed.
+Exposed only when Mcpjungle is started with OpenTelemetry enabled. Returns Prometheus-format metrics. This endpoint is not secured by the standard bearer-token middleware — secure it at the network level if needed.
 
 ## Error shape
 

@@ -1,24 +1,29 @@
 ---
-title: "Configure MCPJungle's database"
-description: "MCPJungle supports SQLite for local development and PostgreSQL for production. Configure the connection with a DSN or individual environment variables."
+title: "Configure mcpjungle's database"
+description: "Choose SQLite for local evaluation or PostgreSQL for serious deployments, and configure Mcpjungle with either a full DSN or Postgres-specific environment variables."
 ---
 
-MCPJungle requires a database to persist registered MCP servers, tool groups, users, and configuration. By default it creates a SQLite file in the current working directory, which is convenient for local testing. For anything beyond that, use PostgreSQL.
+Mcpjungle requires a database to persist registered servers, tool groups, users, and related configuration.
+
+Use the database choice as a deployment signal:
+
+- **SQLite** for local evaluation and single-user experimentation.
+- **PostgreSQL** for anything shared, durable, or production-facing.
 
 ## Default: SQLite
 
-When no database configuration is provided, MCPJungle automatically creates a SQLite file named `mcpjungle.db` in the directory where the process is started:
+When no database configuration is provided, Mcpjungle automatically creates a SQLite file named `mcpjungle.db` in the directory where the process is started:
 
 ```bash
 mcpjungle start
 # Creates ./mcpjungle.db in the current directory
 ```
 
-SQLite requires no setup and works well for individuals running MCPJungle locally. It is not recommended for production or multi-user deployments.
+SQLite requires no setup and works well for individuals running Mcpjungle locally. It is not recommended for production or multi-user deployments.
 
 ## PostgreSQL
 
-MCPJungle supports PostgreSQL for production workloads. You can configure the connection using either a full DSN or individual environment variables.
+Mcpjungle supports PostgreSQL for serious deployments. You can configure it with either a full DSN or individual environment variables.
 
 ### Option 1: Connection DSN
 
@@ -84,7 +89,7 @@ mcpjungle start
 
 ## Variable precedence
 
-When MCPJungle starts, it resolves the database connection in this order:
+When Mcpjungle starts, it resolves the database connection in this order:
 
 1. `DATABASE_URL` — used as-is if set
 2. `POSTGRES_HOST` (+ optional variables) — constructs a DSN if `POSTGRES_HOST` is set
@@ -93,7 +98,7 @@ When MCPJungle starts, it resolves the database connection in this order:
 ## Production recommendations
 
 <Tip>
-  Deploy a separate managed Postgres cluster (for example, RDS, Cloud SQL, or Supabase) and supply its endpoint via `DATABASE_URL`. Running the database in a sidecar container is acceptable for development but not recommended for production.
+  Deploy a separate Postgres cluster and supply its endpoint via `DATABASE_URL`. Running the database in a sidecar container is acceptable for development but not recommended for production.
 </Tip>
 
 The production Docker Compose file (`docker-compose.prod.yaml`) bundles a Postgres 17 container for convenience. For a real deployment, replace it with a managed database service and update the `DATABASE_URL` accordingly.

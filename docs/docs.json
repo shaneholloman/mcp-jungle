@@ -1,16 +1,16 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "name": "MCPJungle",
+  "name": "mcpjungle",
   "theme": "aspen",
   "colors": {
     "primary": "#5c64f4",
     "light": "#acb4fc",
     "dark": "#ffffff"
   },
-  "favicon": "https://media.brand.dev/bdf1d847-06bd-4151-b03e-50a3e244afbd.png",
+  "favicon": "/images/logo.png",
   "logo": {
-    "light": "https://media.brand.dev/f5cf9483-55db-4419-81cb-331fd5cf7957.svg",
-    "dark": "https://media.brand.dev/f5cf9483-55db-4419-81cb-331fd5cf7957.svg"
+    "light": "/images/logo.png",
+    "dark": "/images/logo.png"
   },
   "navbar": {
     "primary": {
@@ -20,7 +20,8 @@
   },
   "footer": {
     "socials": {
-      "github": "https://github.com/mcpjungle/mcpjungle"
+      "github": "https://github.com/mcpjungle/mcpjungle",
+      "discord": "https://discord.gg/CapV4Z3krk"
     }
   },
   "navigation": {
@@ -31,41 +32,22 @@
           {
             "group": "Get Started",
             "pages": [
-              "introduction",
               "quickstart",
-              "installation"
+              "installation",
+              "core-concepts",
+              "support-matrix",
+              "talk-to-us"
             ]
           },
           {
-            "group": "Deployment",
+            "group": "Servers and Tools",
             "pages": [
-              "deployment/docker",
-              "deployment/production",
-              "deployment/database"
-            ]
-          },
-          {
-            "group": "Managing MCP Servers",
-            "pages": [
-              "guides/register-servers",
-              "guides/stdio-servers",
-              "guides/session-modes",
-              "guides/enable-disable"
-            ]
-          },
-          {
-            "group": "Tool Groups",
-            "pages": [
+              "guides/register-http-servers",
+              "guides/register-stdio-servers",
+              "guides/tools-and-prompts",
+              "guides/manage-resources",
               "guides/tool-groups",
-              "guides/prompts"
-            ]
-          },
-          {
-            "group": "Enterprise",
-            "pages": [
-              "enterprise/overview",
-              "enterprise/access-control",
-              "enterprise/observability"
+              "guides/session-modes"
             ]
           },
           {
@@ -75,6 +57,37 @@
               "integrations/cursor",
               "integrations/copilot"
             ]
+          },
+          {
+            "group": "Deploy and Operate",
+            "pages": [
+              "deployment/docker",
+              "deployment/production",
+              "deployment/database",
+              "deployment/observability"
+            ]
+          },
+          {
+            "group": "Access and Governance",
+            "pages": [
+              "governance/overview",
+              "governance/upstream-authentication",
+              "governance/access-control",
+              "governance/clients-and-users"
+            ]
+          },
+          {
+            "group": "Limitations",
+            "pages": [
+              "limitations"
+            ]
+          },
+          {
+            "group": "Developers",
+            "pages": [
+              "developers/contributing",
+              "developers/development"
+            ]
           }
         ]
       },
@@ -82,7 +95,7 @@
         "tab": "Reference",
         "groups": [
           {
-            "group": "CLI Commands",
+            "group": "CLI",
             "pages": [
               "reference/cli-overview",
               "reference/cli-server",
@@ -92,13 +105,9 @@
             ]
           },
           {
-            "group": "HTTP API",
+            "group": "API",
             "pages": [
-              "reference/api-overview",
-              "reference/api-servers",
-              "reference/api-tools",
-              "reference/api-groups",
-              "reference/api-clients"
+              "reference/api-overview"
             ]
           },
           {
