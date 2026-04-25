@@ -22,6 +22,8 @@ MCPJungle aggregates multiple MCP servers into a single MCP endpoint.
 
 It acts as a gateway that your AI clients connect to, providing unified access to tools, prompts, and resources across all MCP servers.
 
+Use mcpjungle locally as a single MCP endpoint for your own tools, or run it as shared MCP infrastructure for your team.
+
 ![diagram](./assets/mcpjungle-diagram/april-2026/mcpjungle-diagram.png)
 
 ## Why MCPJungle?
@@ -38,6 +40,8 @@ MCPJungle introduces a single control layer:
 - 🎯 One MCP endpoint for all your servers
 - 🧰 Unified access to tools, prompts, and resources
 - 🛡️ Centralized discovery, access control, and observability
+
+It starts as a simple local setup for individual users, and scales into a shared, governed deployment when teams need it.
 
 > [!NOTE]
 > Mcpjungle documentation now lives at [docs.mcpjungle.com](https://docs.mcpjungle.com).
