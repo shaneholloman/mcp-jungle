@@ -45,7 +45,10 @@ It starts as a simple local setup for individual users, and scales into a shared
 
 > [!NOTE]
 > Mcpjungle documentation now lives at [docs.mcpjungle.com](https://docs.mcpjungle.com).
+> 
 > Please prefer the docs site over this README for the latest guides, reference, and operational details.
+> 
+> Your AI Clients can also access the docs using its MCP server `https://docs.mcpjungle.com/mcp`!
 
 ## Quickstart
 
