@@ -48,12 +48,12 @@ MCPJungle gives you a single control point:
 
 Start with a local setup. Scale to a shared team gateway when you need it.
 
-> [!NOTE]
-> Mcpjungle documentation has a new home: [https://docs.mcpjungle.com](https://docs.mcpjungle.com).
-> 
-> Please prefer the docs site over this README for the latest guides, reference, and operational details.
-> 
-> Your AI Clients can also access the docs using its MCP server `https://docs.mcpjungle.com/mcp`!
+## Documentation
+ Mcpjungle documentation has a new home: [https://docs.mcpjungle.com](https://docs.mcpjungle.com).
+ 
+ Please prefer the docs site over this README for the latest guides, reference, and operational details.
+ 
+ Your AI Clients can also access the docs using its MCP server `https://docs.mcpjungle.com/mcp`!
 
 ## Quickstart
 
