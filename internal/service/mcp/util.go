@@ -20,7 +20,7 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mcpjungle/mcpjungle/internal/model"
 	"github.com/mcpjungle/mcpjungle/pkg/apierrors"
-	"github.com/mcpjungle/mcpjungle/pkg/types"
+	"gorm.io/gorm"
 )
 
 const (
@@ -243,8 +243,37 @@ func prepareSHTTPClientOptions(serverName string, conf *model.StreamableHTTPConf
 	return opts
 }
 
-// createHTTPMcpServerConn creates a new connection with a streamable http MCP server and returns the client.
-func createHTTPMcpServerConn(ctx context.Context, s *model.McpServer, initReqTimeoutSec int) (*client.Client, error) {
+// defaultHTTPInitializeRequest builds the standard initialize payload used when
+// MCPJungle connects to an upstream streamable HTTP server.
+func defaultHTTPInitializeRequest(url string) mcp.InitializeRequest {
+	initRequest := mcp.InitializeRequest{}
+	initRequest.Params.ProtocolVersion = mcp.LATEST_PROTOCOL_VERSION
+	initRequest.Params.ClientInfo = mcp.Implementation{
+		Name:    "mcpjungle mcp client for " + url,
+		Version: "0.1",
+	}
+	initRequest.Params.Capabilities = mcp.ClientCapabilities{}
+	return initRequest
+}
+
+// initializeHTTPClient runs the standard initialize request with the configured timeout.
+func initializeHTTPClient(ctx context.Context, c *client.Client, url string, initReqTimeoutSec int) (*mcp.InitializeResult, error) {
+	initCtx, cancel := context.WithTimeout(ctx, time.Duration(initReqTimeoutSec)*time.Second)
+	defer cancel()
+
+	return c.Initialize(initCtx, defaultHTTPInitializeRequest(url))
+}
+
+// createHTTPMcpServerConn creates and initializes a streamable HTTP client for
+// an upstream MCP server. When useStoredUpstreamAuth is true, it attempts to
+// attach any stored upstream OAuth credentials loaded from the DB.
+func createHTTPMcpServerConn(
+	ctx context.Context,
+	db *gorm.DB,
+	s *model.McpServer,
+	initReqTimeoutSec int,
+	useStoredUpstreamAuth bool,
+) (*client.Client, error) {
 	conf, err := s.GetStreamableHTTPConfig()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get streamable HTTP config for MCP server %s: %w", s.Name, err)
@@ -252,23 +281,47 @@ func createHTTPMcpServerConn(ctx context.Context, s *model.McpServer, initReqTim
 
 	opts := prepareSHTTPClientOptions(s.Name, conf)
 
-	c, err := client.NewStreamableHttpClient(conf.URL, opts...)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create streamable HTTP client for MCP server: %w", err)
+	var c *client.Client
+
+	if useStoredUpstreamAuth && db != nil {
+		tokenModel, err := getStoredUpstreamOAuthToken(db, s.Name)
+		if err == nil {
+			hasStoredOAuthTokens := tokenModel.AccessToken != "" || tokenModel.RefreshToken != ""
+			if hasStoredOAuthTokens {
+				scopes, err := scopesFromJSON(tokenModel.Scopes)
+				if err != nil {
+					return nil, fmt.Errorf("failed to decode stored OAuth scopes for server %s: %w", s.Name, err)
+				}
+				oauthConfig := client.OAuthConfig{
+					ClientID:     tokenModel.ClientID,
+					ClientSecret: tokenModel.ClientSecret,
+					RedirectURI:  tokenModel.RedirectURI,
+					Scopes:       scopes,
+					TokenStore: &upstreamOAuthTokenStore{
+						db:         db,
+						serverName: s.Name,
+						transport:  s.Transport,
+					},
+					PKCEEnabled: true,
+				}
+				c, err = client.NewOAuthStreamableHttpClient(conf.URL, oauthConfig, opts...)
+				if err != nil {
+					return nil, fmt.Errorf("failed to create OAuth streamable HTTP client for MCP server: %w", err)
+				}
+			}
+		} else if !errors.Is(err, apierrors.ErrNotFound) {
+			return nil, fmt.Errorf("failed to load stored OAuth token for server %s: %w", s.Name, err)
+		}
 	}
 
-	initRequest := mcp.InitializeRequest{}
-	initRequest.Params.ProtocolVersion = mcp.LATEST_PROTOCOL_VERSION
-	initRequest.Params.ClientInfo = mcp.Implementation{
-		Name:    "mcpjungle mcp client for " + conf.URL,
-		Version: "0.1",
+	if c == nil {
+		c, err = client.NewStreamableHttpClient(conf.URL, opts...)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create streamable HTTP client for MCP server: %w", err)
+		}
 	}
-	initRequest.Params.Capabilities = mcp.ClientCapabilities{}
 
-	initCtx, cancel := context.WithTimeout(ctx, time.Duration(initReqTimeoutSec)*time.Second)
-	defer cancel()
-
-	_, err = c.Initialize(initCtx, initRequest)
+	_, err = initializeHTTPClient(ctx, c, conf.URL, initReqTimeoutSec)
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
 			return nil, fmt.Errorf(
@@ -369,14 +422,35 @@ func runStdioServer(ctx context.Context, s *model.McpServer, initReqTimeoutSec i
 	return c, nil
 }
 
-// createSSEMcpServerConn creates a new connection with an SSE transport-based MCP server and returns the client.
-func createSSEMcpServerConn(ctx context.Context, s *model.McpServer) (*client.Client, error) {
+// defaultSSEInitializeRequest builds the standard initialize payload used for SSE upstreams.
+func defaultSSEInitializeRequest() mcp.InitializeRequest {
+	return mcp.InitializeRequest{
+		Params: mcp.InitializeParams{
+			ProtocolVersion: "2024-11-05",
+			Capabilities:    mcp.ClientCapabilities{},
+			ClientInfo:      mcp.Implementation{Name: "mcpjungle-sse-proxy-client", Version: "0.1.0"},
+		},
+	}
+}
+
+// createSSEMcpServerConn creates and initializes an SSE client for an upstream
+// MCP server. When useStoredUpstreamAuth is true, it attempts to attach any
+// stored upstream OAuth credentials loaded from the DB.
+func createSSEMcpServerConn(
+	ctx context.Context,
+	db *gorm.DB,
+	s *model.McpServer,
+	useStoredUpstreamAuth bool,
+) (*client.Client, error) {
 	conf, err := s.GetSSEConfig()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get SSE transport config for MCP server %s: %w", s.Name, err)
 	}
 
-	var opts []transport.ClientOption
+	var (
+		opts []transport.ClientOption
+		c    *client.Client
+	)
 	if conf.BearerToken != "" {
 		// If bearer token is provided, set the Authorization header
 		o := transport.WithHeaders(map[string]string{
@@ -385,58 +459,51 @@ func createSSEMcpServerConn(ctx context.Context, s *model.McpServer) (*client.Cl
 		opts = append(opts, o)
 	}
 
-	c, err := client.NewSSEMCPClient(conf.URL, opts...)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create SSE client for MCP server: %w", err)
+	if useStoredUpstreamAuth && db != nil {
+		if tokenModel, err := getStoredUpstreamOAuthToken(db, s.Name); err == nil {
+			hasStoredOAuthTokens := tokenModel.AccessToken != "" || tokenModel.RefreshToken != ""
+			if hasStoredOAuthTokens {
+				scopes, err := scopesFromJSON(tokenModel.Scopes)
+				if err != nil {
+					return nil, fmt.Errorf("failed to decode stored OAuth scopes for server %s: %w", s.Name, err)
+				}
+				oauthConfig := client.OAuthConfig{
+					ClientID:     tokenModel.ClientID,
+					ClientSecret: tokenModel.ClientSecret,
+					RedirectURI:  tokenModel.RedirectURI,
+					Scopes:       scopes,
+					TokenStore: &upstreamOAuthTokenStore{
+						db:         db,
+						serverName: s.Name,
+						transport:  s.Transport,
+					},
+					PKCEEnabled: true,
+				}
+				c, err = client.NewOAuthSSEClient(conf.URL, oauthConfig, opts...)
+				if err != nil {
+					return nil, fmt.Errorf("failed to create OAuth SSE client for MCP server: %w", err)
+				}
+			}
+		} else if !errors.Is(err, apierrors.ErrNotFound) {
+			return nil, fmt.Errorf("failed to load stored OAuth token for server %s: %w", s.Name, err)
+		}
+	}
+	if c == nil {
+		c, err = client.NewSSEMCPClient(conf.URL, opts...)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create SSE client for MCP server: %w", err)
+		}
 	}
 
 	if err = c.Start(ctx); err != nil {
 		return nil, fmt.Errorf("failed to start SSE transport for MCP server: %w", err)
 	}
 
-	initReq := mcp.InitializeRequest{
-		Params: mcp.InitializeParams{
-			ProtocolVersion: "2024-11-05",
-			Capabilities:    mcp.ClientCapabilities{},
-			ClientInfo:      mcp.Implementation{Name: "mcpjungle-sse-proxy-client", Version: "0.1.0"},
-		},
-	}
+	initReq := defaultSSEInitializeRequest()
 	_, err = c.Initialize(ctx, initReq)
 	if err != nil {
 		return nil, fmt.Errorf("client failed to initialize connection with SSE MCP server: %w", err)
 	}
 
 	return c, nil
-}
-
-func newMcpServerSession(ctx context.Context, s *model.McpServer, initReqTimeoutSec int) (*client.Client, error) {
-	if s.Transport == types.TransportStreamableHTTP {
-		mcpClient, err := createHTTPMcpServerConn(ctx, s, initReqTimeoutSec)
-		if err != nil {
-			return nil, fmt.Errorf(
-				"failed to create connection to streamable http MCP server %s: %w", s.Name, err,
-			)
-		}
-		return mcpClient, nil
-	}
-
-	if s.Transport == types.TransportSSE {
-		mcpClient, err := createSSEMcpServerConn(ctx, s)
-		if err != nil {
-			return nil, fmt.Errorf(
-				"failed to create connection to SSE MCP server %s: %w", s.Name, err,
-			)
-		}
-		return mcpClient, nil
-	}
-
-	// A new sub-process is spun up for each call to a STDIO mcp server.
-	// This is especially a problem for the MCP proxy server, which is expected to call tools frequently.
-	// This causes a serious performance hit, but is easy to implement so it is used for now.
-	// For stateful sessions, use the SessionManager to keep the process running.
-	mcpClient, err := runStdioServer(ctx, s, initReqTimeoutSec)
-	if err != nil {
-		return nil, fmt.Errorf("failed to run stdio MCP server %s: %w", s.Name, err)
-	}
-	return mcpClient, nil
 }

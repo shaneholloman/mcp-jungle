@@ -1,14 +1,25 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"net"
+	"net/http"
 	"os"
+	"os/exec"
+	"runtime"
+	"time"
 
+	"github.com/mcpjungle/mcpjungle/client"
 	"github.com/mcpjungle/mcpjungle/internal/configresolver"
+	"github.com/mcpjungle/mcpjungle/pkg/apierrors"
 	"github.com/mcpjungle/mcpjungle/pkg/types"
 	"github.com/spf13/cobra"
 )
+
+const oauthCallbackPath = "/oauth/callback"
 
 var (
 	registerCmdServerName  string
@@ -95,24 +106,6 @@ func init() {
 	rootCmd.AddCommand(registerMCPServerCmd)
 }
 
-func readMcpServerConfig(filePath string) (types.RegisterServerInput, error) {
-	var input types.RegisterServerInput
-
-	data, err := os.ReadFile(filePath)
-	if err != nil {
-		return input, fmt.Errorf("failed to read config file %s: %w", filePath, err)
-	}
-	// Parse JSON config
-	if err := json.Unmarshal(data, &input); err != nil {
-		return input, fmt.Errorf("failed to parse config file: %w", err)
-	}
-	if err := configresolver.ResolveEnvVars(&input); err != nil {
-		return input, fmt.Errorf("failed to resolve config file environment variables: %w", err)
-	}
-
-	return input, nil
-}
-
 func runRegisterMCPServer(cmd *cobra.Command, args []string) error {
 	var input types.RegisterServerInput
 
@@ -134,12 +127,89 @@ func runRegisterMCPServer(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	s, err := apiClient.RegisterServer(&input, registerCmdForce)
+	var callbackSrv *oauthCallbackServer
+	result, err := apiClient.RegisterServer(&input, registerCmdForce)
+	if err != nil && shouldRetryRegisterWithOAuthCallback(err, &input) {
+		// server registration failed because the server requires oauth.
+		// Start the local callback server and retry registration with the callback URI included.
+		callbackSrv, err = newOAuthCallbackServer()
+		if err != nil {
+			return fmt.Errorf("failed to start local OAuth callback server: %w", err)
+		}
+		defer callbackSrv.Close()
+		input.OAuthRedirectURI = callbackSrv.RedirectURI()
+
+		result, err = apiClient.RegisterServer(&input, registerCmdForce)
+	}
 	if err != nil {
+		// server registration failed due to an unexpected reason.
 		return fmt.Errorf("failed to register server: %w", err)
 	}
-	fmt.Printf("Server %s registered successfully!\n", s.Name)
 
+	if result.AuthorizationRequired != nil {
+		if callbackSrv == nil {
+			return fmt.Errorf("upstream OAuth authorization required. Open this URL to continue: %s", result.AuthorizationRequired.AuthorizationURL)
+		}
+		cmd.Printf("OAuth authorization required. Opening browser for upstream server approval.\n")
+		openBrowser(result.AuthorizationRequired.AuthorizationURL)
+
+		timeout := time.Until(result.AuthorizationRequired.ExpiresAt)
+		if timeout <= 0 {
+			timeout = 5 * time.Minute
+		}
+		params, err := callbackSrv.Wait(timeout)
+		if err != nil {
+			return fmt.Errorf("failed waiting for OAuth callback: %w", err)
+		}
+
+		code := params["code"]
+		state := params["state"]
+		if code == "" || state == "" {
+			return fmt.Errorf("OAuth callback did not include both code and state")
+		}
+
+		result, err = apiClient.CompleteUpstreamOAuthSession(
+			result.AuthorizationRequired.SessionID,
+			&types.CompleteUpstreamOAuthSessionInput{
+				Code:  code,
+				State: state,
+			},
+		)
+		if err != nil {
+			return fmt.Errorf("failed to complete upstream OAuth registration: %w", err)
+		}
+	}
+
+	if result.Server == nil {
+		return fmt.Errorf("server registration completed without a server payload")
+	}
+
+	s := result.Server
+	fmt.Printf("Server %s registered successfully!\n", s.Name)
+	return printRegisteredServerSummary(cmd, s)
+}
+
+func readMcpServerConfig(filePath string) (types.RegisterServerInput, error) {
+	var input types.RegisterServerInput
+
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return input, fmt.Errorf("failed to read config file %s: %w", filePath, err)
+	}
+	// Parse JSON config
+	if err := json.Unmarshal(data, &input); err != nil {
+		return input, fmt.Errorf("failed to parse config file: %w", err)
+	}
+	if err := configresolver.ResolveEnvVars(&input); err != nil {
+		return input, fmt.Errorf("failed to resolve config file environment variables: %w", err)
+	}
+
+	return input, nil
+}
+
+// printRegisteredServerSummary prints the same capability summary for both
+// immediate registrations and OAuth-completed registrations.
+func printRegisteredServerSummary(cmd *cobra.Command, s *types.McpServer) error {
 	if types.McpServerTransport(s.Transport) == types.TransportSSE {
 		cmd.Println()
 		cmd.Println("This MCP server uses the SSE (Server-sent events) transport.")
@@ -204,4 +274,115 @@ func runRegisterMCPServer(cmd *cobra.Command, args []string) error {
 	}
 
 	return nil
+}
+
+// shouldRetryRegisterWithOAuthCallback decides whether the CLI should
+// start its localhost OAuth callback listener and retry registration after the
+// first attempt proved that the upstream server requires OAuth.
+func shouldRetryRegisterWithOAuthCallback(err error, input *types.RegisterServerInput) bool {
+	if err == nil {
+		return false
+	}
+	var apiErr *client.APIError
+	return shouldAutoStartOAuthCallback(input) &&
+		errors.As(err, &apiErr) &&
+		apiErr.Code == apierrors.CodeUpstreamOAuthRequired
+}
+
+// shouldAutoStartOAuthCallback decides whether the CLI should automatically
+// provision its localhost callback listener for this registration attempt.
+func shouldAutoStartOAuthCallback(input *types.RegisterServerInput) bool {
+	if input.OAuthRedirectURI != "" {
+		return false
+	}
+	switch types.McpServerTransport(input.Transport) {
+	case types.TransportStreamableHTTP, types.TransportSSE:
+		return true
+	default:
+		return false
+	}
+}
+
+type oauthCallbackServer struct {
+	listener net.Listener
+	server   *http.Server
+	paramsCh chan map[string]string
+}
+
+// newOAuthCallbackServer starts a loopback HTTP server used by the CLI to
+// receive OAuth authorization codes from the operator's browser.
+func newOAuthCallbackServer() (*oauthCallbackServer, error) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return nil, err
+	}
+
+	srv := &oauthCallbackServer{
+		listener: listener,
+		paramsCh: make(chan map[string]string, 1),
+	}
+
+	mux := http.NewServeMux()
+	mux.HandleFunc(oauthCallbackPath, func(w http.ResponseWriter, r *http.Request) {
+		params := map[string]string{}
+		for key, values := range r.URL.Query() {
+			if len(values) > 0 {
+				params[key] = values[0]
+			}
+		}
+		select {
+		case srv.paramsCh <- params:
+		default:
+		}
+		w.Header().Set("Content-Type", "text/html")
+		_, _ = w.Write([]byte(`<html><body><h1>Authorization successful</h1><p>You can close this window.</p></body></html>`))
+	})
+
+	srv.server = &http.Server{Handler: mux}
+	go func() {
+		_ = srv.server.Serve(listener)
+	}()
+	return srv, nil
+}
+
+// RedirectURI returns the callback URI that should be supplied during registration.
+func (s *oauthCallbackServer) RedirectURI() string {
+	return "http://" + s.listener.Addr().String() + oauthCallbackPath
+}
+
+// Wait blocks until the callback is received or the timeout elapses.
+func (s *oauthCallbackServer) Wait(timeout time.Duration) (map[string]string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	select {
+	case params := <-s.paramsCh:
+		return params, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+// Close shuts down the local OAuth callback server.
+func (s *oauthCallbackServer) Close() error {
+	if s.server == nil {
+		return nil
+	}
+	return s.server.Close()
+}
+
+// openBrowser best-effort launches the default browser on the local machine.
+func openBrowser(url string) {
+	var err error
+	switch runtime.GOOS {
+	case "darwin":
+		err = exec.Command("open", url).Start()
+	case "windows":
+		err = exec.Command("rundll32", "url.dll,FileProtocolHandler", url).Start()
+	default:
+		err = exec.Command("xdg-open", url).Start()
+	}
+	if err != nil {
+		fmt.Printf("Open this URL in your browser to continue OAuth authorization:\n%s\n", url)
+	}
 }

@@ -6,6 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/mcpjungle/mcpjungle/pkg/apierrors"
+	"github.com/mcpjungle/mcpjungle/pkg/types"
 )
 
 // handleServiceError writes the appropriate HTTP error response for a service-layer error.
@@ -14,12 +15,16 @@ import (
 // all other errors become 500.
 func handleServiceError(c *gin.Context, err error) {
 	if errors.Is(err, apierrors.ErrNotFound) {
-		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		c.JSON(http.StatusNotFound, types.APIErrorResponse{Error: err.Error()})
 		return
 	}
 	if errors.Is(err, apierrors.ErrInvalidInput) {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		resp := types.APIErrorResponse{Error: err.Error()}
+		if errors.Is(err, apierrors.ErrUpstreamOAuthRequired) {
+			resp.Code = apierrors.CodeUpstreamOAuthRequired
+		}
+		c.JSON(http.StatusBadRequest, resp)
 		return
 	}
-	c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+	c.JSON(http.StatusInternalServerError, types.APIErrorResponse{Error: err.Error()})
 }

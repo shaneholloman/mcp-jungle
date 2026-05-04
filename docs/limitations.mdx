@@ -9,15 +9,11 @@ We're actively working on some of these to address them as quickly as possible.
 
 ## OAuth for upstream authentication
 
-Mcpjungle does not yet support OAuth flows for upstream MCP server authentication.
+Mcpjungle supports OAuth flows for upstream HTTP MCP server registration, but with some limitations:
 
-Today, the supported model is static credentials such as:
-
-- bearer tokens
-- explicit custom headers
-- environment variables (for stdio servers)
-
-We're working on adding complete support for these in the coming weeks.
+- the feature is currently beta
+- the OAuth grant is gateway-scoped, not per downstream user
+- the primary workflow is registration-time authorization
 
 ## OAuth, SSO and OIDC for downstream clients
 
@@ -32,7 +28,7 @@ Clients can use either:
 
 If you want stronger external control over token lifecycle, you can manage custom tokens outside Mcpjungle using tools such as Vault or AWS KMS and then supply those tokens to Mcpjungle clients.
 
-We're working on adding complete support for these in the coming weeks.
+We're working on adding support for these in the coming months.
 
 ## Prompts & Resources in Tool Groups
 

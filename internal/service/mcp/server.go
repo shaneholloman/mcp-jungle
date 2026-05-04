@@ -6,17 +6,65 @@ import (
 	"fmt"
 	"log"
 
+	mcpgotransport "github.com/mark3labs/mcp-go/client/transport"
 	"github.com/mcpjungle/mcpjungle/internal/model"
 	"github.com/mcpjungle/mcpjungle/pkg/apierrors"
 	"github.com/mcpjungle/mcpjungle/pkg/types"
 	"gorm.io/gorm"
 )
 
-// RegisterMcpServer registers a new MCP server in the database.
-// It also registers all the Tools, Prompts and Resources provided by the server.
-// Tool registration is required, while prompt/resource registration is on best-effort basis.
-// Registered tools, prompts and resources are also added to the MCP proxy server.
-func (m *MCPService) RegisterMcpServer(ctx context.Context, s *model.McpServer) error {
+// RegisterMcpServerWithOAuthSupport attempts to register a server immediately and,
+// if upstream OAuth authorization is required, persists a pending auth session that
+// can be completed later.
+func (m *MCPService) RegisterMcpServerWithOAuthSupport(
+	ctx context.Context,
+	input *types.RegisterServerInput,
+	s *model.McpServer,
+	force bool,
+	initiatedBy string,
+) error {
+	// First attempt to register the server without involving any oauth flows.
+	// This covers all mcp servers that DO NOT specifically require oauth-based authentication.
+	err := m.registerMcpServerWithoutOAuth(ctx, s)
+	if err == nil {
+		return nil
+	}
+
+	// If registration failed and the error is not related to oauth, return error.
+	if s.Transport != types.TransportStreamableHTTP && s.Transport != types.TransportSSE {
+		return err
+	}
+	if !errors.Is(err, mcpgotransport.ErrUnauthorized) {
+		return err
+	}
+
+	// registration failed due to missing/invalid upstream OAuth credentials.
+	// notify the client so the oauth flow can be initiated.
+	return m.bootstrapUpstreamOAuth(ctx, input, s, force, initiatedBy)
+}
+
+// registerMcpServerWithoutOAuth performs the initial upstream registration
+// attempt without attaching any stored upstream OAuth credentials.
+func (m *MCPService) registerMcpServerWithoutOAuth(ctx context.Context, s *model.McpServer) error {
+	return m.registerMcpServer(ctx, s, false)
+}
+
+// finalizeMcpServerRegistration performs the plain MCP server registration flow
+// once upstream authentication has already been satisfied and any stored
+// upstream OAuth credentials should be attached to the connection attempt.
+func (m *MCPService) finalizeMcpServerRegistration(ctx context.Context, s *model.McpServer) error {
+	return m.registerMcpServer(ctx, s, true)
+}
+
+// registerMcpServer performs the core MCP server registration flow.
+//
+// It first registers the MCP server in the DB, then registers all the Tools,
+// Prompts, and Resources provided by the server. Tool registration is required,
+// while prompt/resource registration is best-effort. Registered entities are
+// also added to the MCP proxy server.
+//
+// This method assumes that any Oauth nuance is already handled and simply uses existing auth info.
+func (m *MCPService) registerMcpServer(ctx context.Context, s *model.McpServer, useStoredUpstreamAuth bool) error {
 	if err := validateServerName(s.Name); err != nil {
 		return err
 	}
@@ -41,7 +89,13 @@ func (m *MCPService) RegisterMcpServer(ctx context.Context, s *model.McpServer) 
 		}
 	}
 
-	mcpClient, err := newMcpServerSession(ctx, s, m.mcpServerInitReqTimeoutSec)
+	mcpClient, err := createMcpServerConnectionWithDB(
+		ctx,
+		m.db,
+		s,
+		m.mcpServerInitReqTimeoutSec,
+		useStoredUpstreamAuth,
+	)
 	if err != nil {
 		return err
 	}
@@ -104,6 +158,12 @@ func (m *MCPService) DeregisterMcpServer(name string) error {
 	}
 	if err := m.db.Unscoped().Delete(s).Error; err != nil {
 		return fmt.Errorf("failed to deregister server %s: %w", name, err)
+	}
+	if err := m.db.Unscoped().Where("server_name = ?", name).Delete(&model.UpstreamOAuthToken{}).Error; err != nil {
+		return fmt.Errorf("failed to remove upstream OAuth tokens for server %s: %w", name, err)
+	}
+	if err := m.db.Unscoped().Where("server_name = ?", name).Delete(&model.UpstreamOAuthPendingSession{}).Error; err != nil {
+		return fmt.Errorf("failed to remove pending upstream OAuth sessions for server %s: %w", name, err)
 	}
 
 	// Close any stateful session associated with this server

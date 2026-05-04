@@ -71,6 +71,7 @@ func NewMCPService(c *ServiceConfig) (*MCPService, error) {
 	sessionManager := c.SessionManager
 	if sessionManager == nil {
 		sessionManager = NewSessionManager(&SessionManagerConfig{
+			DB:                c.DB,
 			IdleTimeoutSec:    DefaultSessionIdleTimeoutSec,
 			InitReqTimeoutSec: c.McpServerInitReqTimeout,
 		})
