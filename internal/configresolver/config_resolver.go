@@ -20,7 +20,7 @@ func ResolveEnvVars(target any) error {
 	}
 
 	value := reflect.ValueOf(target)
-	if value.Kind() != reflect.Ptr || value.IsNil() {
+	if value.Kind() != reflect.Pointer || value.IsNil() {
 		return fmt.Errorf("config target must be a non-nil pointer")
 	}
 
@@ -33,7 +33,7 @@ func resolveConfigValue(value reflect.Value) error {
 	}
 
 	switch value.Kind() {
-	case reflect.Ptr:
+	case reflect.Pointer:
 		// Recurse into pointer targets when present; nil pointers are left untouched.
 		if value.IsNil() {
 			return nil
