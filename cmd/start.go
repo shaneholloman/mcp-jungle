@@ -27,6 +27,7 @@ import (
 	"github.com/mcpjungle/mcpjungle/internal/service/toolgroup"
 	"github.com/mcpjungle/mcpjungle/internal/service/user"
 	"github.com/mcpjungle/mcpjungle/internal/telemetry"
+	"github.com/mcpjungle/mcpjungle/pkg/version"
 	"github.com/spf13/cobra"
 )
 
@@ -117,6 +118,32 @@ func init() {
 	)
 
 	rootCmd.AddCommand(startServerCmd)
+}
+
+func newProxyServers() (*server.MCPServer, *server.MCPServer) {
+	// Tie the advertised proxy version to the mcpjungle server version (from
+	// pkg/version) so the proxies always report the same version as the host
+	// process, instead of a hardcoded string.
+	proxyVersion := version.GetVersion()
+
+	mcpProxyServer := server.NewMCPServer(
+		"MCPJungle Proxy MCP Server",
+		proxyVersion,
+		server.WithResourceCapabilities(false, false),
+		server.WithToolCapabilities(true),
+		server.WithPromptCapabilities(true),
+		server.WithToolFilter(mcp.ProxyToolFilter),
+	)
+	sseMcpProxyServer := server.NewMCPServer(
+		"MCPJungle Proxy MCP Server for SSE transport",
+		proxyVersion,
+		server.WithResourceCapabilities(false, false),
+		server.WithToolCapabilities(true),
+		server.WithPromptCapabilities(true),
+		server.WithToolFilter(mcp.ProxyToolFilter),
+	)
+
+	return mcpProxyServer, sseMcpProxyServer
 }
 
 // getDesiredServerMode returns the desired server mode for mcpjungle server.
@@ -373,23 +400,7 @@ func runStartServer(cmd *cobra.Command, args []string) error {
 
 	bindPort := getBindPort()
 
-	// create the MCP proxy servers
-	mcpProxyServer := server.NewMCPServer(
-		"MCPJungle Proxy MCP Server",
-		"0.0.1",
-		server.WithResourceCapabilities(false, false),
-		server.WithToolCapabilities(true),
-		server.WithPromptCapabilities(true),
-		server.WithToolFilter(mcp.ProxyToolFilter),
-	)
-	sseMcpProxyServer := server.NewMCPServer(
-		"MCPJungle Proxy MCP Server for SSE transport",
-		"0.0.1",
-		server.WithResourceCapabilities(false, false),
-		server.WithToolCapabilities(true),
-		server.WithPromptCapabilities(true),
-		server.WithToolFilter(mcp.ProxyToolFilter),
-	)
+	mcpProxyServer, sseMcpProxyServer := newProxyServers()
 
 	timeout, err := getMcpServerInitReqTimeout()
 	if err != nil {
