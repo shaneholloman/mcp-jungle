@@ -84,7 +84,7 @@ mcpjungle register --name context7 --url https://mcp.context7.com/mcp
 
 You should see output similar to this:
 
-![register-context7](./assets/register-context7.png)
+![register-context7](./docs/images/register-context7.png)
 
 ### Connect to mcpjungle
 
